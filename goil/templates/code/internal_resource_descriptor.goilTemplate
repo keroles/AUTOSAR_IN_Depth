@@ -1,0 +1,30 @@
+%
+if resource::NAME != "INTERNAL_RES_SCHEDULER" then
+%
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+/*-----------------------------------------------------------------------------
+ * Resource descriptor of internal resource % !resource::NAME %
+ *%
+foreach task in resource::TASKUSAGE
+before
+%
+ * Tasks which use this resource :
+ * %
+do
+  !task::VALUE
+between
+%
+ * %
+end foreach
+%
+ */
+VAR(tpl_internal_resource, OS_VAR) % !resource::NAME %_rez_desc = {
+  /* ceiling priority of the resource */  % !resource::PRIORITY %,
+  /* owner previous priority          */  0,
+  /* true if the resource is taken    */  FALSE
+};
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+end if

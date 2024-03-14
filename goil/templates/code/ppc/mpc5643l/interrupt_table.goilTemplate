@@ -1,0 +1,340 @@
+%
+#------------------------------------------------------------------------------*
+# build an empty list when the list does not exist. This simplify
+# further processing because existence test is not necessary
+
+let INTERCORE_INTERRUPT := exists INTERCORE_INTERRUPT default (@( ))
+let OS::TIMINGPROTECTION_WATCHDOG := exists OS::TIMINGPROTECTION_WATCHDOG
+                                     default (@())
+
+# OPTIMTICKS GLOBAL DEFINITIONS
+# A Core has a its slave source enabled only if it has at least one hardware
+# counter on the master source.
+let optimticks_slavesources := @[ ]
+let optimticks_optimizedsource := ""
+if exists OS::OPTIMIZETICKS default(false) then
+  let optimticks_optimizedsource := OS::OPTIMIZETICKS_S::SHAREDSOURCE
+  foreach slavesource in OS::OPTIMIZETICKS_S::SLAVESOURCE do
+    let core_counters := getCoreAttributes(OS, APPLICATION, slavesource::CORE, HARDWARECOUNTERS, "COUNTER")
+    foreach counter in core_counters do
+      if counter::SOURCE == optimticks_optimizedsource then
+        let optimticks_slavesources[[slavesource::CORE string]] := slavesource::SOURCE
+      end if
+    end foreach
+  end foreach
+end if
+let optimticks_numberofcores := [optimticks_slavesources length]
+
+%
+/*-----------------------------------------------------------------------------
+ * Interrupt specific structures
+ */
+
+#include "tpl_timers.h"
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+
+###############################################################################
+#   handlers declaration
+#
+
+# ISR
+foreach isr in ISRS do
+%FUNC(tpl_bool, OS_CODE) tpl_isr_handler_% !isr::NAME %(void);
+%
+end foreach
+
+# Intercore IT
+foreach interrupt in INTERCORE_INTERRUPT do
+%FUNC(tpl_bool, OS_CODE) tpl_intercore_handler_% !interrupt::NAME %(void);
+%
+end foreach
+
+# Tick
+let counter_map   := mapof COUNTER by NAME
+let interrupt_map := mapof INTERRUPT by NAME
+
+loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+  let tick_sources := @( )
+  let core_counters := getCoreAttributes(OS, APPLICATION, core_id, HARDWARECOUNTERS, "COUNTER")
+  foreach counter in core_counters do
+    if counter::SOURCE != "decrementer" then
+      let interrupt := interrupt_map[counter::SOURCE]
+      let tick_sources[counter::SOURCE] := interrupt
+    end if
+  end foreach
+
+  if exists optimticks_slavesources[[core_id string]] then
+    let interrupt_name := optimticks_slavesources[[core_id string]]
+    let tick_sources[interrupt_name] := interrupt_map[interrupt_name]
+  end if
+
+  foreach interrupt in tick_sources do
+    if OS::NUMBER_OF_CORES > 1 then
+%FUNC(tpl_bool, OS_CODE) tpl_tick_handler_% !interrupt::NAME%_% !core_id %(void);
+%
+    else
+%FUNC(tpl_bool, OS_CODE) tpl_tick_handler_% !interrupt::NAME%(void);
+%
+    end if
+  end foreach
+
+# Watchdog
+
+  if OS::TIMINGPROTECTION then
+    let watchdog_sources := @( )
+    foreach watchdog in OS::TIMINGPROTECTION_WATCHDOG do
+      if watchdog::CORE == core_id then
+        let interrupt := interrupt_map[watchdog::SOURCE]
+        let watchdog_sources[watchdog::SOURCE] := interrupt
+      end if
+    end foreach
+
+    foreach interrupt in watchdog_sources do
+      if OS::NUMBER_OF_CORES > 1 then
+
+%FUNC(tpl_bool, OS_CODE) tpl_watchdog_handler_% !interrupt::NAME%_% !core_id %(void);
+%
+      else
+%FUNC(tpl_bool, OS_CODE) tpl_watchdog_handler_% !interrupt::NAME%(void);
+%
+      end if
+    end foreach
+  end if
+
+end loop
+
+###############################################################################
+#   tpl_it_table
+#
+
+let counter_map   := mapof COUNTER by NAME
+loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+
+  ###### Get used counters
+  let used_counters := getCoreAttributes(OS, APPLICATION, core_id, HARDWARECOUNTERS, "COUNTER")
+  let used_watchdogs := @( )
+  if OS::TIMINGPROTECTION then
+    foreach watchdog in OS::TIMINGPROTECTION_WATCHDOG do
+      if watchdog::CORE == core_id then
+        let used_watchdogs[watchdog::NAME] := watchdog
+      end if
+    end foreach
+  end if
+
+  if OS::NUMBER_OF_CORES == 1 then
+%
+CONST(tpl_it_vector_entry, OS_CONST) tpl_it_table[% !INTERRUPT_COUNT::IT_TABLE_SIZE %] = {
+%
+  else # In multicore, we have one interrupt table for each core
+%
+CONST(tpl_it_vector_entry, OS_CONST) tpl_it_table_%!core_id%[% !INTERRUPT_COUNT::IT_TABLE_SIZE %] = {
+%
+  end if
+
+  loop ENTRY from 0 to INTERRUPT_COUNT::IT_TABLE_SIZE - 1
+  do
+    let entryFound := false
+
+    foreach interrupt in INTERRUPT do
+      if ENTRY == interrupt::ID then
+
+        ########## Intercore Interrupt Checking (Multicore only)
+        foreach int_interrupt in INTERCORE_INTERRUPT do
+          if int_interrupt::CORE == core_id
+             & int_interrupt::SOURCE == interrupt::NAME
+             & not entryFound then
+%  { (tpl_it_handler)tpl_intercore_handler_% !int_interrupt::NAME %,(void *)NULL}%
+            let entryFound := true
+          end if
+        end foreach
+
+        ########## Watchdog Checking
+        foreach watchdog in used_watchdogs do
+          if watchdog::SOURCE == interrupt::NAME
+           & not entryFound then
+            if OS::NUMBER_OF_CORES > 1 then
+%  { (tpl_it_handler)tpl_watchdog_handler_% !interrupt::NAME %_%!core_id%, (void *)NULL }%
+            else
+%  { (tpl_it_handler)tpl_watchdog_handler_% !interrupt::NAME %, (void *)NULL }%
+            end if
+            let entryFound := true
+          end if
+        end foreach
+
+        ########## Counter Interrupt Checking
+        foreach counter in used_counters do
+          if counter::SOURCE == interrupt::NAME
+           & not entryFound then
+            if OS::NUMBER_OF_CORES > 1 then
+%  { (tpl_it_handler)tpl_tick_handler_% !interrupt::NAME %_%!core_id%, (void *)NULL }%
+            else
+%  { (tpl_it_handler)tpl_tick_handler_% !interrupt::NAME %, (void *)NULL }%
+            end if
+            let entryFound := true
+          end if
+        end foreach
+
+        ########## ISR Interrupt Checking
+        foreach isr in ISRS do
+          let core_isrs := getCoreAttributes(OS, APPLICATION, core_id, ISRS, "ISR")
+          foreach app_isr in core_isrs do
+            if app_isr::NAME == isr::NAME
+             & isr::SOURCE == interrupt::NAME
+             & not entryFound then
+%  { (tpl_it_handler)tpl_isr_handler_%!isr::NAME%, (void*)NULL }%
+              let entryFound := true
+            end if
+          end foreach
+        end foreach
+
+        ######### Optimizeticks : slavesource
+        if exists optimticks_slavesources[[core_id string]] then
+          let slavesource_name := optimticks_slavesources[[core_id string]]
+          if (interrupt::NAME == slavesource_name) then
+            if OS::NUMBER_OF_CORES > 1 then
+              %  { (tpl_it_handler)tpl_tick_handler_% !interrupt::NAME %_%!core_id%, (void *)NULL }%
+              let entryFound := true
+            else # Monocore
+              %  { (tpl_it_handler)tpl_tick_handler_% !interrupt::NAME %, (void *)NULL }%
+              let entryFound := true
+            end if
+            let entryFound := true
+          end if
+        end if
+
+      end if
+    end foreach
+
+
+    if not entryFound then
+    %  { (tpl_it_handler)tpl_null_it, (void *)NULL }%
+    end if
+  between %,    /* Vector % !ENTRY % */
+%
+  end loop
+%
+  };
+%
+end loop
+
+###############################################################################
+#   tpl_it_table pointer (multicore only)
+#
+
+if OS::NUMBER_OF_CORES > 1 then
+%
+CONSTP2CONST(tpl_it_vector_entry, OS_CONST, OS_CONST) tpl_it_table[% !OS::NUMBER_OF_CORES %] = {
+%
+  loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+%  tpl_it_table_%!core_id
+  between%,
+%
+  end loop
+%
+};
+%
+end if
+
+###############################################################################
+#   tpl_dec_table This table contains the handler to call for each core that
+#   uses the decrementer
+let dec_map := @[]
+let counter_map   := mapof COUNTER by NAME
+
+loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+  let core_counters := getCoreAttributes(OS, APPLICATION, core_id, HARDWARECOUNTERS, "COUNTER")
+  foreach counter in core_counters do
+    if counter::SOURCE == "decrementer" then
+      let dec_map[[core_id string]] := "tick"
+    end if
+  end foreach
+
+  foreach watchdog in OS::TIMINGPROTECTION_WATCHDOG do
+    if watchdog::CORE == core_id
+     & watchdog::SOURCE == "decrementer" then
+      let dec_map[[core_id string]] := "watchdog"
+    end if
+  end foreach
+end loop
+
+if dec_map != @[] then
+%
+CONST(tpl_it_handler, OS_CONST) tpl_dec_table[% !OS::NUMBER_OF_CORES %] = {
+%
+  loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+    if exists dec_map[[core_id string]] then
+      let handler := dec_map[[core_id string]]
+      if handler == "watchdog" then
+%  (tpl_it_handler)tpl_watchdog_expiration%
+      elsif handler == "tick" then
+        if OS::NUMBER_OF_CORES == 1 then
+%  (tpl_it_handler)tpl_call_counter_tick_decrementer %
+        else
+%  (tpl_it_handler)tpl_call_counter_tick_decrementer_% !core_id
+        end if
+      end if
+    else
+%  NULL%
+    end if
+  between%,
+%
+  end loop
+%
+};
+%
+end if
+
+###############################################################################
+#   tpl_wdg_table This table contains the functions for the watchdog
+#   control for each cores
+let watchdog_sources := @[]
+let counter_map   := mapof COUNTER by NAME
+
+loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+  foreach watchdog in OS::TIMINGPROTECTION_WATCHDOG do
+    if watchdog::CORE == core_id then
+      let watchdog_sources[[core_id string]] := watchdog::SOURCE
+    end if
+  end foreach
+end loop
+
+if watchdog_sources != @[] & OS::TIMINGPROTECTION then
+
+  loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+    if exists watchdog_sources[[core_id string]] then
+      let source := watchdog_sources[[core_id string]]
+%FUNC(void, OS_CODE) tpl_set_tpwatchdog_% !source%(
+  VAR(tpl_time, AUTOMATIC) delay);
+FUNC(void, OS_CODE) tpl_cancel_tpwatchdog_% !source %();
+%
+    end if
+  end loop
+%
+CONSTP2FUNC(void, OS_CONST, tpl_wdg_table[% !OS::NUMBER_OF_CORES * 2%])() = {
+%
+  loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+    if exists watchdog_sources[[core_id string]] then
+      let source := watchdog_sources[[core_id string]]
+%  tpl_set_tpwatchdog_% !source %,
+  tpl_cancel_tpwatchdog_% !source %%
+    else
+%  NULL%
+    end if
+  between%,
+%
+  end loop
+%
+};
+%
+end if
+%
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+%
+
+template if exists tpl_external_interrupts_c
+

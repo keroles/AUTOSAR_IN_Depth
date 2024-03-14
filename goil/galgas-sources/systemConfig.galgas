@@ -1,0 +1,346 @@
+#---------------------------------------------------------------------------*
+#
+#  @file systemConfig.galgas
+#
+#  @section desc File description
+#
+#  Configuration values for code generation.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+method @object_t set ?let @lstring name ?!@gtlData unused result {
+  error @location.here: "Attribute: "+name+", Internal error"
+}
+
+# build a template struct
+override method @structAttribute set ?let @lstring name ?!@gtlData result {
+  @gtlData subAttrs = [subAttributes fieldMap]
+  [!?subAttrs setStructField
+    !.new { !"NAME" !structName }
+    !@gtlString.new { !location !oil_desc !structName}
+  ]
+  [!?subAttrs setMeta !oil_desc]
+  [!?result setStructField !name !subAttrs]
+#  if [subAttrs count] > 0 then
+#    foreach subAttrs do
+#      [!?result insertKey !lkey !mType !mValue];
+#    end foreach;
+#  end if;
+}
+
+# build a template boolean
+# the name of the attribute in the system configuration is the same
+# the content of the attribute (if it exists) is a struct with the same
+# name suffixed by _S
+override method @boolAttribute set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField !name !@gtlBool.new { !location !oil_desc !value }]
+  @gtlData subAttrs = [subAttributes fieldMap]
+  if [[subAttrs as @gtlStruct value] count] > 0 then
+    let @lstring structName = @lstring. new { ![name string]+"_S" ![name location] }
+    [!?subAttrs setMeta !oil_desc]
+    [!?result setStructField !structName !subAttrs]
+  end
+}
+
+# build a template enum
+# the name of the attribute in the system configuration is the same
+# the content of the attribute (if it exists) is a struct with the same
+# name suffixed by _S
+override method @enumAttribute set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField !name !@gtlString.new { !location !oil_desc !value }]
+  @gtlData subAttrs = [subAttributes fieldMap]
+  if [[subAttrs as @gtlStruct value] count] > 0 then
+    let @lstring structName = @lstring. new { ![name string]+"_S" ![name location] }
+    [!?subAttrs setMeta !oil_desc]
+    [!?result setStructField !structName !subAttrs]
+  end
+}
+
+override method @stringAttribute set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField !name !@gtlString.new { !location !oil_desc !value }]
+}
+
+override method @string_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField !name !@gtlString.new { !location !oil_desc !value }]
+}
+
+override method @objectRefAttribute set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField !name !@gtlString.new { !location !oil_desc !value }]
+}
+
+override method @multipleAttribute set ?let @lstring name ?!@gtlData result {
+  @gtlList multiple = .new { !.here !emptylstring() !.emptyList }
+  for () in  items do
+    @gtlData multipleItem = @gtlStruct.new { !location !oil_desc !.emptyMap }
+    cast item
+    case == @structAttribute aStruct :
+      [!?multipleItem setStructField
+        !@lstring.new { !"NAME" ![aStruct location] }
+        !@gtlString.new {
+          ![aStruct location]
+          ![aStruct oil_desc]
+          ![aStruct structName]
+        }
+      ] 
+      let @gtlData subAttrs = [[aStruct subAttributes] fieldMap]
+      if [[subAttrs as @gtlStruct value] count] > 0 then
+        for () in  [subAttrs as @gtlStruct value] do
+          [!?multipleItem setStructField !lkey !value]
+        end
+      end
+    else
+      [item set !@lstring. new { !"VALUE" ![item location]} !?multipleItem]
+    end
+    [!?multiple appendItem !multipleItem]
+  end
+  [!?multiple setMeta !oil_desc]
+  [!?result setStructField !name !multiple]
+}
+
+override method @uint32_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlInt.new { !location !oil_desc ![value bigint] }
+  ]
+}
+
+override method @sint32_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlInt.new { !location !oil_desc ![value bigint] }
+  ]
+}
+
+override method @uint64_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlInt.new { !location !oil_desc ![value bigint] }
+  ]
+}
+
+override method @sint64_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlInt.new { !location !oil_desc ![value bigint] }
+  ]
+}
+
+override method @float_class set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlFloat.new { !location !oil_desc !value }
+  ]
+}
+
+override method @auto set ?let @lstring name ?!@gtlData result {
+  [!?result setStructField
+    !name
+    !@gtlEnum.new { !location !oil_desc !"auto" }
+  ]
+}
+
+getter @objectAttributes fieldMap
+  ->@gtlData result {
+  result = @gtlStruct.new { !.here !emptylstring() !.emptyMap }
+  for () in  objectParams do
+    [value set !lkey !?result]
+  end
+}
+
+getter @string trimLeft
+  -> @string result
+{
+  if [self leftSubString !1] == " " then
+    result = [[self rightSubString ![self length]-1] trimLeft]
+  else
+    result = self
+  end
+}
+
+getter @string trimRight
+  -> @string result
+{
+  if [self rightSubString !1] == " " then
+    result = [[self leftSubString ![self length]-1] trimRight]
+  else
+    result = self
+  end
+}
+
+getter @applicationDefinition templateData
+  ?let @implementation imp
+  ->@gtlData cfg
+{
+  cfg = @gtlStruct.new { !.here !emptylstring() !.emptyMap }
+
+  #
+  # First setup the general configuration data
+  #
+  [!?cfg setStructField
+    !@lstring.new { !"OILFILENAME" !.here }
+    !@gtlString.new { 
+      !.here
+      !lstring(!@string.stringWithSourceFilePath)
+      ![@string.stringWithSourceFilePath lastPathComponent]
+    }
+  ]
+
+  [!?cfg setStructField
+    !@lstring.new { !"CPUNAME" ![name location] }
+    !@gtlString.new { !.here !lstring(!"name of the CPU object") !name }
+  ]
+  
+  [!?cfg setStructField
+    !@lstring.new { !"CPUDESCRIPTION" ![cpuDescription location] }
+    !@gtlString.new { !.here !lstring(!"description of the CPU object") !cpuDescription }
+  ]
+  
+  [!?cfg setStructField
+    !@lstring.new { !"OILVERSION" ![version location] }
+    !@gtlString.new { !.here !versionDescription !version }
+  ]
+  
+  [!?cfg setStructField
+    !@lstring.new { !"OILDESCRIPTION" ![versionDescription location] }
+    !@gtlString.new { !.here !versionDescription !versionDescription }
+  ]
+  
+  [!?cfg setStructField
+    !@lstring.new { !"TIMESTAMP" !.here }
+    !@gtlString.new {
+      !.here 
+      !lstring(!"timestamp of OIL compiling") 
+      !@string.stringWithCurrentDateTime 
+    }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"PROJECT" !.here }
+    !@gtlString.new { 
+      !.here 
+      !lstring(!"project name") 
+      ![projectName() lastPathComponent] 
+    }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"TARGET" !.here }
+    !@gtlString.new {
+      !.here
+      !lstring(!"target architecture/chip/board")
+      ![option goil_options.target_platform value] 
+    }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"TEMPLATEPATH" !.here }
+    !@gtlString.new { 
+      !.here 
+      !lstring(!"path of the templates used")
+      ![option goil_options.template_dir value] 
+    }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"ARCH" !.here }
+    !@gtlString.new { !.here !lstring(!"target architecture") !arch() }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"CHIP" !.here }
+    !@gtlString.new { !.here !lstring(!"target chip")!chip() }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"BOARD" !.here }
+    !@gtlString.new { !.here !lstring(!"target board")!board() }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"TARGETPATHLIST" !.here }
+    !@gtlList.new { !.here !lstring(!"target path list") !targetPathList() }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"LOGFILE" !.here }
+    !@gtlBool.new {
+      !.here 
+      !lstring(!"Generated a logfile") 
+      ![option goil_options.generate_log value] 
+    }
+  ]
+    
+  [!?cfg setStructField
+    !@lstring.new { !"EOF" !.here }
+    !@gtlString.new {
+      !.here
+      !lstring(!"End of file location")
+      ![@location.here locationString]
+    }
+  ]
+  
+  # Parse the -o option
+  @gtlData opts = @gtlStruct.new {
+    !.here
+    !lstring(!"Passed options")
+    !.emptyMap 
+  }
+  let @string optionString = [[[option goil_options.passOption value] trimLeft] trimRight]
+  if [optionString length] > 0 || [option goil_options.pierreOption value] then
+    grammar options_grammar on ([option goil_options.passOption value],"Passed options") ?opts
+  end
+  
+  [!?cfg setStructField
+    !@lstring.new { !"PASSEDOPTIONS" !.here }
+    !opts
+  ]
+
+  for () in  objects do
+#    message [lkey string]."\n";
+    # Check if the object is multiple or not. If not, attributes
+    # are stored in a struct otherwise instances are stored in a map.
+    [[imp imp] get !lkey ?let @implementationObject implementationObject]
+    if [[implementationObject multiple] bool] then
+      @gtlList objs = .new { !.here !lkey !.emptyList }
+      for () in  [objectsOfKind objects] do
+        let @gtlData attrs = [attributes fieldMap]
+        
+        [!?objs appendItem !attrs]
+      end
+      [!?cfg setStructField
+        !lkey
+        !objs
+      ]
+    else
+#      message "*** single\n";
+      if [[objectsOfKind objects] count] == 1 then
+        @gtlData attrs = @gtlStruct.new { !.here !lkey !.emptyMap }
+        for () in  [objectsOfKind objects] do
+          attrs = [attributes fieldMap]
+        end
+        [!?cfg setStructField
+          !lkey
+          !attrs
+        ]
+      end
+    end
+  end
+#  log cfg;
+}
+

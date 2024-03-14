@@ -1,0 +1,21 @@
+IMPLEMENTATION ppc_interrupt {
+  /* Add the SOURCE (interrupt source) attribute */
+  COUNTER [] {
+    INTERRUPT_TYPE SOURCE;
+  };
+
+  OS [] {
+    BOOLEAN HASFLOAT = FALSE;
+  };
+}
+/*
+ * Interrupt sources for MPC551°
+ */
+CPU mpc5510_interrupt {
+  INTERRUPT_COUNT nb_it {
+    IT_TABLE_SIZE = 57;
+  };
+  INTERRUPT it_timer_1 { ID = 0; };
+  INTERRUPT it_timer_2 { ID = 7; };
+  INTERRUPT IRQ3 { ID = 56; };
+};

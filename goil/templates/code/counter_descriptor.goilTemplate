@@ -1,0 +1,58 @@
+/*-----------------------------------------------------------------------------
+ * Counter % !counter::NAME % descriptor
+ */
+
+#define API_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+if (counter::NAME == "SystemCounter") & (OS::SCALABILITYCLASS < 3) then
+%
+CONST(tpl_tick, OS_CONST) OSTICKSPERBASE = % !counter::TICKSPERBASE %;
+CONST(tpl_tick, OS_CONST) OSMAXALLOWEDVALUE = % !counter::MAXALLOWEDVALUE %;
+CONST(tpl_tick, OS_CONST) OSMINCYCLE = % !counter::MINCYCLE %;
+%
+else
+%
+CONST(tpl_tick, OS_CONST) OSTICKSPERBASE_% !counter::NAME % = % !counter::TICKSPERBASE %;
+CONST(tpl_tick, OS_CONST) OSMAXALLOWEDVALUE_% !counter::NAME % = % !counter::MAXALLOWEDVALUE %;
+CONST(tpl_tick, OS_CONST) OSMINCYCLE_% !counter::NAME % = % !counter::MINCYCLE %;
+%
+end if
+%
+#define API_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+
+VAR(tpl_counter, OS_VAR) % !counter::NAME %_counter_desc = {
+  /* ticks per base       */  % !counter::TICKSPERBASE %,
+  /* max allowed value    */  % !counter::MAXALLOWEDVALUE %,
+  /* minimum cycle        */  % !counter::MINCYCLE %,
+  /* current tick         */  0,
+  /* current date         */  0,%
+if OS::TRACE then
+%
+  /* trace id             */  % !INDEX %,%
+end if
+if AUTOSAR then
+%
+    /* type the counter     */  % !counter::TYPE %_COUNTER,%
+end if
+%
+#if WITH_OSAPPLICATION == YES
+    /* OS Application id    */  %
+if AUTOSAR then
+  if OS::SCALABILITYCLASS >= 3 then
+    !counter::APPLICATION%_id,%
+  end if
+end if
+%
+#endif
+    /* first alarm          */  NULL_PTR,
+    /* next alarm to raise  */  NULL_PTR
+};
+
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+

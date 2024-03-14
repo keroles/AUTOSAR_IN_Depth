@@ -1,0 +1,29 @@
+IMPLEMENTATION mpc5643l_multicore {
+
+  /* Add intercore interrupts */
+  INTERCORE_INTERRUPT [] {
+    INTERRUPT_TYPE SOURCE;
+    UINT32 CORE;
+  };
+
+};
+
+/*
+ * Interrupt sources for MPC5643L
+ */
+CPU mpc5643l_interrupt {
+
+  INTERRUPT sema4_ch0 { ID = 247; };
+  INTERRUPT sema4_ch1 { ID = 248; };
+
+  /* Intercore interrupts */
+
+  INTERCORE_INTERRUPT intercore_it_c0_0 { SOURCE = IRQ7; CORE = 0;};
+  INTERCORE_INTERRUPT intercore_it_c1_0 { SOURCE = IRQ7; CORE = 1;};
+
+  PLATFORM_FILES ppc_multicore {
+    PATH = "ppc/multicore";
+    CFILE = "tpl_multicore.s";
+  };
+};
+

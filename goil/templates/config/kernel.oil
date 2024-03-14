@@ -1,0 +1,28 @@
+CPU kernel {
+  KERNEL osek_kernel {
+    PATH = "os";
+    FILE = "tpl_os_kernel.c";
+    FILE = "tpl_os_timeobj_kernel.c";
+    FILE = "tpl_os_action.c";
+    FILE = "tpl_os_error.c";
+  };
+  KERNEL com_kernel {
+    PATH = "com";
+    FILE = "tpl_com_app_copy.c";
+    FILE = "tpl_com_filtering.c";
+    FILE = "tpl_com_filters.c";
+    FILE = "tpl_com_internal_com.c";
+    FILE = "tpl_com_notification.c";
+    FILE = "tpl_com_queue.c";
+    FILE = "tpl_com_errorhook.c";
+  };
+  KERNEL autosar_kernel {
+    PATH = "autosar";
+    FILE = "tpl_as_action.c";
+  };
+  KERNEL protec_kernel {
+    PATH = "autosar";
+    FILE = "tpl_as_protec_hook.c";
+    FILE = "tpl_as_timing_protec.c";
+  };
+};

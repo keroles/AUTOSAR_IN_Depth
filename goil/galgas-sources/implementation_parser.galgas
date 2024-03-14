@@ -1,0 +1,696 @@
+#---------------------------------------------------------------------------*
+#
+#  @file implementation_parser.galgas
+#
+#  @section desc File description
+#
+#  Parser for the implementation definition of an OIL file.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+syntax implementation_parser(goil_lexique){
+
+#
+# External rules
+#
+rule <description> !@lstring desc
+rule <boolean> !@lbool val
+rule <sign> !@bool signed
+
+rule <implementation_definition>
+  ?!@implementation implementation {
+#  $IMPLEMENTATION$ $idf$ ?let @lstring implementationName ${$
+  $IMPLEMENTATION$ ; $idf$ ?* ; ${$
+  <implementation_object_list> !?implementation
+  $}$ ; $;$
+}
+
+rule <implementation_object_list>
+  ?!@implementation implementation
+{
+  repeat
+  while <implementation_objects> !?implementation ; $;$
+  while <include_implementation_level> !?implementation
+  end
+}
+
+rule <include_implementation_level>
+  ?!@implementation implementation
+{
+  @bool includeIfExists = false
+  select
+    $include$
+  or
+    $includeifexists$ ; includeIfExists = true
+  end
+  @lstring file_name
+  select
+    $g_string$ ?file_name
+    file_in_path ( !?file_name)
+  or
+    $string$ ?file_name
+  end
+  if not includeIfExists || (includeIfExists && [file_name fileExists]) then
+    grammar goil_implementation_level_include in file_name !?implementation
+  end  
+}
+
+rule <include_type_level>
+  ?!@implementationObjectMap objectAttributes
+{
+  @bool includeIfExists = false
+  select
+    $include$
+  or
+    $includeifexists$ ; includeIfExists = true
+  end
+  @lstring file_name
+  select
+    $g_string$ ?file_name
+    file_in_path ( !?file_name)
+  or
+    $string$ ?file_name
+  end
+  if not includeIfExists || (includeIfExists && [file_name fileExists]) then
+    grammar goil_type_level_include in file_name !?objectAttributes
+  end
+}
+
+rule <implementation_objects>
+  ?!@implementation implementation
+{
+  @implementationMap imp = [implementation imp]
+  
+  $idf$ ?let @lstring objectName # get the object name
+  let @lbool multiple
+  select
+   # object may have multiple instances
+    $[$ ; $]$ ; multiple = @lbool.new { !true !@location.here} 
+  or
+    multiple = @lbool.new { !false !@location.here}
+  end
+
+  @implementationObjectMap objectAttributes = .emptyMap
+
+  ${$
+  <implementation_list> !?objectAttributes
+  $}$
+  
+  let @implementationObject newObject = .new { !multiple !objectAttributes }
+  
+  # Check if this object already exists
+  # If yes, the new declaration is merged with the old one
+  @implementationObject object
+  if [implementation hasKey ![objectName string]] then
+    [!?imp del !objectName ?object]
+    object = [object mergeImplementationObjectWith !newObject]
+#    message "Redefinition de "+objectName+"\n"
+  else
+    object = newObject
+  end
+    
+  [!?imp put !objectName !object]
+  [!?implementation setImp !imp]
+}
+
+rule <implementation_list>
+  ?!@implementationObjectMap objectAttributes
+{
+  repeat
+  while
+    let @lstring attributeName
+    @impType type
+    <implementation_type> ?attributeName ?type
+    if [objectAttributes hasKey ![attributeName string]] then
+      let @impType previousType
+      [objectAttributes get !attributeName ?previousType]
+
+#      message "*** New definition "+[attributeName string]+"\n";
+      if [previousType multiple] then
+        # Case where we have to append two default multiple attributes
+        # Done only if at least one of the values is a multipleAttribute
+        let @object_t previousDefaultValue = [previousType getDefaultValue]
+        let @object_t defaultValue = [type getDefaultValue]
+        @bool oneIsMultiple = false
+        if previousDefaultValue is == @multipleAttribute then
+          oneIsMultiple = true
+        elsif defaultValue is == @multipleAttribute then
+          oneIsMultiple = true
+        end
+
+        if oneIsMultiple then
+          # We have to append the previous default value list to the current.
+          # message "Adding element to " + [[previousType name] string] + "\n"
+          @identifierList aList = .emptyList
+          @lstring desc = emptyLString()
+          @location location = .nowhere
+
+          # Previous list first
+          cast previousDefaultValue
+          case == @multipleAttribute multiAttribute :
+            aList = [multiAttribute items]
+            desc = [multiAttribute oil_desc]
+            location = [multiAttribute location]
+          else end
+
+          # Then append the second
+          cast defaultValue
+          case == @multipleAttribute multiAttribute :
+            aList += [multiAttribute items]
+            if [desc string] == "" then
+              desc = [multiAttribute oil_desc]
+            end
+            if location == .nowhere then
+              location = [multiAttribute location]
+            end
+          else end
+
+          # Create the new default value
+          let @object_t newDefault = @multipleAttribute.new{!desc !location !aList}
+
+          # Replace the previous type
+          [!?type setDefValue !newDefault]
+
+          [!?objectAttributes del !attributeName ?*]
+          [!?objectAttributes put !attributeName !type]
+        end
+      end
+
+      if checkNewTypeWithinPreviousType(!attributeName !previousType !type) then
+#        message "*** OK "+[attributeName string]+"\n";
+#        log type;
+        [!?objectAttributes del !attributeName ?*]
+        [!?objectAttributes put !attributeName !type]
+      end
+    else  
+      [!?objectAttributes put !attributeName !type]
+    end
+    $;$
+  while
+    <include_type_level> !?objectAttributes
+  end
+}
+
+rule <implementation_type>
+  !@lstring attributeName
+  !@impType type {
+  select
+    $UINT32$    ; <number_options> ?attributeName ?type !@dataType. uint32Number
+  or
+    $INT32$     ; <number_options> ?attributeName ?type !@dataType. sint32Number
+  or
+    $UINT64$    ; <number_options> ?attributeName ?type !@dataType. uint64Number
+  or
+    $INT64$     ; <number_options> ?attributeName ?type !@dataType. sint64Number
+  or
+    $FLOAT$     ; <number_options> ?attributeName ?type !@dataType. floatNumber
+  or
+    $ENUM$      ; <enum_options> ?attributeName ?type
+  or
+    $BOOLEAN$   ; <boolean_options> ?attributeName ?type
+  or
+    $STRING$    ; <string_options> ?attributeName ?type
+  or
+    $IDENTIFIER$ ; <type_options> ?attributeName ?type !@dataType. identifier
+  or
+    $STRUCT$    ; <struct_options> ?attributeName ?type
+  or
+    let @lstring typeName ; $idf$ ?typeName ; <objref_option> ?attributeName ?type !typeName
+  end
+}
+
+rule <struct_options>
+  !@lstring name
+  !@impType options {
+  var structAttributes =@implementationObjectMap.emptyMap{}
+  select
+    ${$ 
+    <implementation_list> !?structAttributes
+    $}$
+  or end
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @lstring description
+  <description> ?description
+  options = @impStructType.new { !{!@location.here} !@dataType. structType !name !multiple !{!description} !structAttributes}
+}
+
+rule <objref_option>
+  !@lstring name
+  !@impType options
+  ?@lstring ref {
+  if [[ref string] rightSubString!5] != "_TYPE" then
+    error @location.here: "an object reference must end with _TYPE"
+  else
+    ref = @lstring. new { ![ref leftSubString ![ref length] - 5] ![ref location]}
+  end
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @lstring description
+  <description> ?description
+  options = @refType. new { !{!@location.here} !@dataType. objectType !name !multiple !{!description} !ref}
+}
+  
+
+rule <string_options>
+  !@lstring name
+  !@impType options {
+  let @bool withAuto
+  <with_auto> ?withAuto
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @object_t defaultValue
+  let @lstring oil_desc
+  select
+    $=$
+    select
+      $string$ ?let @lstring stringValue
+      <description> ?oil_desc
+      let @object_t val = @stringAttribute. new { !oil_desc ![stringValue location] ![stringValue string]}
+      if multiple then
+        defaultValue = @multipleAttribute.new { !oil_desc ![stringValue location] !@identifierList.listWithValue{!val}}
+      else
+        defaultValue = val
+      end
+    or
+      $AUTO$
+      <description> ?oil_desc
+      defaultValue = @auto. new { !oil_desc !@location.here}
+    or
+      $NO_DEFAULT$
+      <description> ?oil_desc
+      defaultValue= @void. new { !oil_desc !@location.here}
+    end
+  or
+    <description> ?oil_desc
+    defaultValue= @void. new { !oil_desc !@location.here}
+  end
+  options = @impAutoDefaultType. new { !{!@location.here} !@dataType.string !name !multiple !{!oil_desc} !withAuto !defaultValue}
+}
+
+rule <boolean_options>
+  !@lstring name
+  !@impType options {
+  let @bool withAuto
+  <with_auto> ?withAuto
+  var trueSubAttributes =@implementationObjectMap.emptyMap{}
+  var falseSubAttributes =@implementationObjectMap.emptyMap{}
+  select
+    $[$
+    $TRUE$
+    select
+      ${$ 
+      <implementation_list> !?trueSubAttributes
+      $}$
+    or
+      trueSubAttributes = @implementationObjectMap. emptyMap
+    end
+    $,$
+    $FALSE$
+    select
+      ${$ 
+      <implementation_list> !?falseSubAttributes
+      $}$
+    or
+      falseSubAttributes = @implementationObjectMap. emptyMap
+    end
+    $]$
+  or end
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @object_t defaultValue
+  let @lstring oil_desc
+  select
+    let @lbool boolValue
+    $=$ ; <boolean> ?boolValue
+    <description> ?oil_desc
+    defaultValue = @boolAttribute. new { !oil_desc ![boolValue location] ![boolValue bool] !@objectAttributes. new { !@identifierMap. emptyMap}}
+  or
+    <description> ?oil_desc
+    defaultValue= @void. new { !oil_desc !@location.here}
+  end
+  options = @impBoolType. new { !{!@location.here} !@dataType. boolean !name !multiple !{!oil_desc} !withAuto !defaultValue !trueSubAttributes !falseSubAttributes}
+}
+
+rule <enum_item>
+  ?!@enumValues items {
+  let @lstring enumItem
+  var subAttributes =@implementationObjectMap.emptyMap{}
+  <identifier_or_enum_value> ?enumItem
+  select
+    ${$
+    <implementation_list> !?subAttributes
+    $}$
+  or end
+  [!?items put !enumItem !subAttributes]
+}
+
+rule <enum_options>
+  !@lstring name
+  !@impType options {
+  let @bool withAuto
+  <with_auto> ?withAuto
+  var items =@enumValues.emptyMap{}
+  $[$
+  <enum_item> !?items
+  repeat
+  while
+    $,$ ; <enum_item> !?items
+  end
+  $]$
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @lstring oil_desc
+  let @object_t defaultValue
+  select
+    $=$
+    select
+      let @lstring stringValue
+      $idf$ ?stringValue
+      <description> ?oil_desc
+      let @object_t val = @enumAttribute. new { !oil_desc ![stringValue location] ![stringValue string] !@objectAttributes. new { !@identifierMap. emptyMap}}
+      if multiple then
+        defaultValue = @multipleAttribute.new { !oil_desc ![stringValue location] !@identifierList.listWithValue{!val}}
+      else
+        defaultValue = val
+      end
+    or
+      $AUTO$
+      <description> ?oil_desc
+      defaultValue = @auto. new { !oil_desc !@location.here}
+    or
+      $NO_DEFAULT$
+      <description> ?oil_desc
+      defaultValue = @void. new { !oil_desc !@location.here}
+    end
+  or
+    <description> ?oil_desc
+    defaultValue = @void. new { !oil_desc !@location.here}
+  end
+  options = @impEnumType. new { !{!@location.here} !@dataType. enumeration !name !multiple !{!oil_desc} !withAuto !defaultValue !items}
+  verifyEnum ( !options)
+}
+
+rule <number_options>
+  !@lstring name
+  !@impType options
+  ?let @dataType type {
+  let @bool withAuto
+  <with_auto> ?withAuto
+  let @attributeRange range
+  <range> ?range !type
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @lstring oil_desc
+  let @object_t defaultValue
+  select
+    $=$
+    select
+      <int_or_float> ?let @object_t val !type
+      oil_desc = [val oil_desc]
+      if multiple then
+        defaultValue = @multipleAttribute.new { !oil_desc ![val location] !@identifierList.listWithValue{!val}}
+      else
+        defaultValue = val
+      end
+    or
+      $NO_DEFAULT$
+      <description> ?oil_desc
+      defaultValue = @void. new { !oil_desc !@location.here}
+    or
+      $AUTO$
+      <description> ?oil_desc
+      defaultValue = @auto. new { !oil_desc !@location.here}
+    end
+  or
+    <description> ?oil_desc
+    defaultValue = @void. new { !oil_desc !@location.here}
+  end
+  options = @impRangedType. new { !{!@location.here} !type !name !multiple !{!oil_desc} !withAuto !defaultValue !range}
+}
+
+rule <type_options>
+  !@lstring name
+  !@impType options
+  ?let @dataType type {
+  let @bool withAuto
+  <with_auto> ?withAuto
+  <identifier_or_attribute> ?name
+  let @bool multiple
+  <multiple> ?multiple
+  let @object_t defaultValue
+  let @lstring oil_desc
+  select
+    $=$
+    select
+      let @lstring ident
+      <identifier_or_attribute> ?ident
+      <description> ?oil_desc
+      let @object_t val = @stringAttribute. new { !oil_desc !@location.here ![ident string]}
+      if multiple then
+        defaultValue = @multipleAttribute.new { !oil_desc ![val location] !@identifierList.listWithValue{!val}}
+      else
+        defaultValue = val
+      end
+    or
+      $NO_DEFAULT$
+      <description> ?oil_desc
+      defaultValue = @void. new { !oil_desc !@location.here}
+    or
+      $AUTO$
+      <description> ?oil_desc
+      defaultValue = @auto. new { !oil_desc !@location.here}
+    end
+  or
+    <description> ?oil_desc
+    defaultValue = @void. new { !oil_desc !@location.here}
+  end
+  options = @impAutoDefaultType. new { !{!@location.here} !type !name !multiple !{!oil_desc} !withAuto !defaultValue}
+}
+
+rule <with_auto>
+  !@bool withAuto {
+  select
+    $WITH_AUTO$ ; withAuto = true
+  or
+    withAuto = false
+  end
+}
+
+rule <int_or_float>
+  !@object_t num
+  ?let @dataType type {
+  let @bool signed
+  <sign> ?signed
+  select
+    let @luint64 number
+    $uint_number$ ?number 
+    <description> ?let @lstring oil_desc
+    num = checkAndGetIntegerNumber(!oil_desc !type !number !signed)
+  or
+    let @ldouble number
+    $float_number$ ?number
+    <description> ?let @lstring oil_desc
+    num = checkAndGetFloatNumber(!oil_desc !type !number !signed)
+  end
+}
+
+rule <set_followup>
+  ?!@numberList numbers
+  ?let @dataType type {
+  repeat
+  while
+    $,$
+    let @object_t num
+    <int_or_float> ?num !type
+    numbers += !@location.here !num
+  end
+}
+
+rule <range_content>
+  !@attributeRange range
+  ?let @dataType type {
+  @object_t start = @void. new { !emptyLString() !@location.here}
+  @object_t stop = @void. new { !emptyLString() !@location.here}
+  let @bool signed
+  <sign> ?signed
+  select
+    let @luint64 number
+    $set_start_uint_number$ ?number
+    start = checkAndGetIntegerNumber(!emptyLString() !type !number !signed)
+    <int_or_float> ?stop !type
+    range = buildRange(!type !start !stop)
+  or
+    let @luint64 number
+    $uint_number$ ?number
+    start = checkAndGetIntegerNumber(!emptyLString() !type !number !signed)
+    select
+      $..$ ; <int_or_float> ?stop !type
+      range = buildRange(!type !start !stop)
+    or
+      @numberList numbers = @numberList. listWithValue { !@location.here !start}
+      <set_followup> !?numbers !type
+      range = attributeRangeWithNumberList(!numbers !type)
+    end
+  or
+    let @ldouble number
+    $float_number$ ?number
+    start = checkAndGetFloatNumber(!emptyLString() !type !number !signed)
+    select
+      $..$ ; <int_or_float> ?stop !type
+      range = buildRange(!type !start !stop)
+    or
+      @numberList numbers = @numberList. listWithValue { !@location.here !start}
+      <set_followup> !?numbers !type
+      range = attributeRangeWithNumberList(!numbers !type)
+    end
+  end
+}
+
+rule <range>
+  !@attributeRange range
+  ?let @dataType rangeType {
+  select
+    $[$ ; <range_content> ?range !rangeType ; $]$
+  or
+    range = @noRange. new { !@location.here}
+  end
+}
+
+rule <multiple>
+  !@bool multi {
+  select
+    $[$ ; $]$
+    multi = true
+  or
+    multi = false
+  end
+}
+
+rule <identifier_or_attribute>
+  !@lstring name {
+  $idf$ ?name
+}
+
+rule <identifier_or_enum_value>
+  !@lstring name {
+#  select $EXTENDED$;           name := [@lstring new !"EXTENDED" !here];
+#  or     $STANDARD$;           name := [@lstring new !"STANDARD" !here];
+#  or 
+      $idf$ ?name
+}
+
+}
+
+#
+# Checks every value of the new enum is in the old enum
+#
+func checkEnums
+  ?let @impEnumType previousEnum
+  ?let @impEnumType newEnum
+  ->@bool inside {
+  let @stringset newValues = [[newEnum valuesMap] keySet]
+  let @stringset previousValues = [[previousEnum valuesMap] keySet]
+  inside = (newValues & previousValues) == newValues
+  if not inside then
+    for () in [newEnum locations] do
+      error location: "ENUM is not within previous enum declaration"
+    end
+    for () in [previousEnum locations] do
+      error location: "previous ENUM declaration was here"
+    end
+  end
+}
+
+#
+# Checks new range is within the previous one
+#
+func checkRanged
+  ?let @impRangedType previousRanged
+  ?let @impRangedType newRanged
+  ->@bool inside
+{
+  [[previousRanged setOrRange] enclose ?inside ![newRanged setOrRange]]
+  if not inside then
+    for () in [newRanged locations] do
+      error location: "new range or set is not within previous range or set declaration"
+    end
+    for () in [previousRanged locations] do
+      error location: "previous range or set declaration was here"
+    end
+  end
+}
+
+func checkNewTypeWithinPreviousType
+  ?let @lstring name
+  ?let @impType previousType
+  ?let @impType newType
+  ->@bool result {
+  result = false
+  if [newType type] != [previousType type] then
+    for () in [newType locations] do
+      error location: [name string]+" should be a "+[[previousType type] oilType]
+    end
+    for () in [previousType locations] do
+      error location: [name string]+" was previouly defined here"
+    end
+    result = false
+  else
+    cast previousType
+    case == @impEnumType previousEnum :
+      cast newType
+      case == @impEnumType newEnum :
+        result = checkEnums(!previousEnum !newEnum)
+      else end
+    case == @impRangedType previousRanged :
+      cast newType
+      case == @impRangedType newRanged :
+        result = checkRanged(!previousRanged !newRanged)
+      else end
+    else
+      result = true
+    end          
+  end
+}
+
+func buildRange
+  ?let @dataType type
+  ?let @object_t start
+  ?let @object_t stop
+  ->@attributeRange range {
+  if    type == @dataType. uint32Number then
+    range = @uint32AttributeMinMax. new { !@location.here !uint32OrError(!start!"UINT32 Range start") !uint32OrError(!stop!"UINT32 Range stop")}
+  elsif type == @dataType. sint32Number then
+    range = @sint32AttributeMinMax. new { !@location.here !sint32OrError(!start!"SINT32 Range start") !sint32OrError(!stop!"SINT32 Range stop")}
+  elsif type == @dataType. uint64Number then
+    range = @uint64AttributeMinMax. new { !@location.here !uint64OrError(!start!"UINT64 Range start") !uint64OrError(!stop!"UINT64 Range stop")}
+  elsif type == @dataType. sint64Number then
+    range = @sint64AttributeMinMax. new { !@location.here !sint64OrError(!start!"SINT64 Range start") !sint64OrError(!stop!"SINT64 Range stop")}
+  elsif type == @dataType. floatNumber then
+    range = @floatAttributeMinMax. new { !@location.here !floatOrError(!start!"FLOAT Range start") !floatOrError(!stop!"FLOAT Range stop")}
+  else
+    error @location.here: "internal. Unknown number type": range
+  end 
+}

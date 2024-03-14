@@ -1,0 +1,216 @@
+/*-----------------------------------------------------------------------------
+ * Task % !task::NAME % descriptor
+ */
+%
+if exists task::SECTION then
+%#define % !task::SECTION %_START_SEC_CODE%
+else
+%#define APP_% !task::KIND %_% !task::NAME %_START_SEC_CODE
+%
+end if
+%
+#include "tpl_memmap.h"
+/*
+ * Task % !task::NAME % function prototype
+ */
+%
+if exists task::FUNC then%
+FUNC(void, OS_APPL_CODE) % !task::FUNC %(void);%
+else%
+FUNC(void, OS_APPL_CODE) % !task::NAME %_function(void);%
+end if
+%
+%
+if exists task::SECTION then
+%#define % !task::SECTION %_STOP_SEC_CODE%
+else
+%#define APP_% !task::KIND %_% !task::NAME %_STOP_SEC_CODE
+%
+end if
+%
+#include "tpl_memmap.h"
+
+/*-----------------------------------------------------------------------------
+ * Target specific structures
+ */
+%
+let proc := task
+template process_specific
+%
+
+%
+if exists task::TIMING_PROTECTION default (false) then
+%
+#if WITH_AUTOSAR_TIMING_PROTECTION == YES
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+
+tpl_timing_protection timeprotect_% !task::NAME % = {    
+    /* date of the last successful activation */        0,                      
+    /* first instance marker */                         TRUE, 
+    /* set of watchdogs */                              { 
+    /* execution budget watchdog */                       {TRUE, 0, % !task::TIMING_PROTECTION_S::EXECUTIONBUDGET %}, 
+    /* resource lock -- to modify */                      {FALSE, 0, 0},
+    /* allinterrupt lock watchdog */                      {FALSE, 0, 0},
+    /* osinterrupt lock watchdog */                       {FALSE, 0, 0}
+                                                        }
+                                                    };
+
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+#endif
+%
+end if
+%
+
+/*
+%
+if exists TIMINGPROTECTION then
+% * EXECUTIONBUDGET = % !TIMINGPROTECTION::EXECUTIONBUDGET %, TIMEFRAME = % !TIMINGPROTECTION::TIMEFRAME %
+ * MAXOSINTERRUPTLOCKTIME = % !TIMINGPROTECTION::MAXOSINTERRUPTLOCKTIME %, MAXALLINTERRUPTLOCKTIME = % !TIMINGPROTECTION::MAXALLINTERRUPTLOCKTIME %
+%
+else
+%  No timing protection
+%
+end if
+% */
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+%
+if exists task::RESOURCE then
+%/*
+ * Resources used by task % !task::NAME %
+ *
+ * %
+foreach resource in task::RESOURCE do
+ !resource::VALUE
+between %, %
+end foreach
+%
+ */
+%end if%
+/*
+ * Static descriptor of task % !task::NAME %
+ */
+CONST(tpl_proc_static, OS_CONST) % !task::NAME %_task_stat_desc = {
+  /* context                  */  % !task::NAME %_CONTEXT,
+  /* stack                    */  % !task::NAME %_STACK,
+%
+if exists task::FUNC then
+%  /* entry point (function)   */  % !task::FUNC %,%
+else
+%  /* entry point (function)   */  % !task::NAME %_function,%
+end if
+%
+  /* internal ressource       */  %
+if task::USEINTERNALRESOURCE then
+  %&%!task::INTERNALRESOURCE%_rez_desc,%
+elsif task::NONPREEMPTABLE then
+  %&INTERNAL_RES_SCHEDULER,%
+else
+  %NULL,%
+end if
+if exists task::ID then
+%
+  /* task id                  */  % !task::ID %,%
+else
+%
+  /* task id                  */  % !task::NAME %_id,%
+end if%
+#if WITH_OSAPPLICATION == YES
+  /* OS application id        */  %
+if AUTOSAR then
+  if OS::SCALABILITYCLASS >= 3 then
+    if exists task::APPLICATION then
+      !task::APPLICATION%_id,%
+    else
+      %INVALID_OSAPPLICATION_ID,%
+    end if
+  end if
+end if
+%
+#endif%
+if OS::NUMBER_OF_CORES > 1 then%
+  /* core id                  */  % !CORE_FOR_PROCESS[task::NAME] %,
+%end if
+%
+  /* task base priority       */  % !task::PRIORITY %,
+  /* max activation count     */  % !task::ACTIVATION %,
+  /* task type                */  TASK_%
+if exists task::EVENT then
+  %EXTENDED,%
+else
+  %BASIC,%
+end if
+%
+#if WITH_AUTOSAR_TIMING_PROTECTION == YES
+%
+if exists task::TIMING_PROTECTION default (false) then
+%
+  /* execution budget */        % !task::TIMING_PROTECTION_S::EXECUTIONBUDGET %,
+  /* timeframe        */        % !task::TIMING_PROTECTION_S::TIMEFRAME %,
+  /* pointer to the timing
+     protection descriptor    */ &timeprotect_% !task::NAME %
+%
+else 
+%
+  /* execution budget */        0,
+  /* timeframe        */        0, 
+  /* pointer to the timing
+     protection descriptor    */ NULL
+%
+end if
+%
+#endif
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+/*
+ * Dynamic descriptor of task % !task::NAME %
+ */
+VAR(tpl_proc, OS_VAR) % !task::NAME %_task_desc = {
+  /* resources                      */  NULL,
+#if WITH_OSAPPLICATION == YES
+  /* if > 0 the process is trusted  */  %
+if AUTOSAR then
+  if OS::SCALABILITYCLASS > 2 then
+    if exists task::TRUSTED default (false) then !1 else !0 end if
+  end if
+else
+  !0
+end if
+%,    
+#endif /* WITH_OSAPPLICATION */
+  /* activate count                 */  0,
+  /* task priority                  */  % !task::PRIORITY %,
+  /* task state                     */  %
+if task::AUTOSTART then
+  %AUTOSTART%
+else
+  %SUSPENDED%
+end if 
+%
+};
+%
+if exists task::EVENT then
+%
+/*
+ * Event structure of task % !task::NAME %
+ */
+VAR(tpl_task_events, OS_VAR) % !task::NAME %_task_evts = {
+  /* event set  */ 0,
+  /* event wait */ 0
+};
+%
+end if
+%
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+

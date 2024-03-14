@@ -1,0 +1,38 @@
+%
+#------------------------------------------------------------------------------*
+# Generation of the idle task static and dynamic descriptor
+#
+# For a one core configuration, one idle task desciptor pair is generated.
+# The static descriptor is named idle_task_stat_desc and the dynamic descriptor
+# is named idle_task_desc
+#
+# For a multiple core configuration, as many idle task descriptor pairs as
+# cores are generated. The static descriptors are named
+# idle_task_<num>_stat_desc and the dynamic descriptors are named
+# idle_<num>_task_desc where <num> is the core identifier.
+#
+
+let task::TRUSTED := true
+let task::PRIORITY := 0
+let task::ACTIVATION := 1
+let task::AUTOSTART := false
+let task::USEINTERNALRESOURCE := false
+let task::NONPREEMPTABLE := false
+let task::KIND := "Task"
+let task::STACKSIZE := "IDLE_STACK_SIZE"
+let task::SECTION := "OS"
+
+if OS::NUMBER_OF_CORES == 1 then
+let task::NAME := "IDLE_TASK"
+let task::FUNC := "idle_function"
+let task::ID   := "IDLE_TASK_ID"
+template task_descriptor
+else
+loop core from 0 to OS::NUMBER_OF_CORES - 1 do
+let task::NAME := "IDLE_TASK_"+[core string]
+let task::FUNC := "idle_function"
+let task::ID   := "IDLE_TASK_"+[core string]+"_ID"
+let CORE_FOR_PROCESS[task::NAME] := core
+template task_descriptor
+end loop
+end if

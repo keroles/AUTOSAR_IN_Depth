@@ -1,0 +1,567 @@
+#---------------------------------------------------------------------------*
+#
+#  @file goil_routines.galgas
+#
+#  @section desc File description
+#
+#  Routines and functions for goil.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+
+
+func projectName -> @string directory {
+  directory = [@string. stringWithSourceFilePath stringByDeletingPathExtension]
+  if [option goil_options.project_dir value] != "" then
+    directory = [option goil_options.project_dir value]
+  end
+}
+
+func oil_dir -> @string dir {
+  dir = [@string. stringWithSourceFilePath stringByDeletingLastPathComponent]
+}
+
+#
+# arch returns the target architecture in arch_name
+# a target architecture is the instruction set (ie ARM, PowerPC, ...)
+#
+func arch -> @string arch_name {
+  let @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  [components first ?arch_name]
+}
+
+#
+# chip returns the target implementation of the architecture
+# a target implementation is the kind of microcontroller (ie ARM7, ARM9, ...)
+#
+func chip -> @string chip_name {
+  let @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  if [components length] > 1 then
+    chip_name = [components mValueAtIndex !1]
+  else
+    chip_name = ""
+  end
+}
+
+#
+# board returns the target board of the chip.
+# If target components are longer than 3, board is the concatenation of
+# last components with a / between them
+#
+func board -> @string board_name {
+  @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  if [components length] > 2 then
+    [!?components popFirst ?*]
+    [!?components popFirst ?*]   
+    board_name = @string.componentsJoinedByString { !components !"/" }
+  else
+    board_name = ""
+  end
+}
+
+#
+# targetPathList returns the target as a list of strings.
+#
+func targetPathList -> @list pathList {
+  let @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  pathList = .emptyList
+  for (@string comp) in components do
+    let @gtlData cont = @gtlString.new { !.here !emptylstring() !comp }
+    pathList += !cont
+  end
+}
+
+#
+# add_path_component adds a path component uh
+#
+func add_path_component
+  ?@string path
+  ?@string component
+  -> @string new_path {
+  if [path characterAtIndex ![path length]-1] != '/' then
+    new_path = path + "/" + component
+  else
+    new_path = path + component
+  end
+}
+
+func rootTemplatesDirectory
+  ->@string templateDirectory
+{
+  if [option goil_options.template_dir value] != "" then
+    templateDirectory = [option goil_options.template_dir value]
+  else
+    let @string env = @string.stringWithEnvironmentVariableOrEmpty { !"GOIL_TEMPLATES"}
+    if env != "" then
+      templateDirectory = env
+    else
+      error @location.here : "The templates path is not set. Use --templates option or set the GOIL_TEMPLATES environment variable" : templateDirectory
+    end
+  end
+
+  templateDirectory = [templateDirectory unixPathWithNativePath]
+  templateDirectory = [templateDirectory stringByStandardizingPath]
+
+  if [templateDirectory characterAtIndex !0] != '/' then
+    if [templateDirectory characterAtIndex !0] == '~' then
+      let @string home = @string.stringWithEnvironmentVariableOrEmpty { !"HOME"}
+      let @string relativeToHome = [templateDirectory rightSubString ![templateDirectory length] - 1]
+      templateDirectory = home + relativeToHome
+    else
+      let @string currentDirectory = @string. stringWithCurrentDirectory
+      templateDirectory = currentDirectory + "/" + templateDirectory
+    end
+    templateDirectory = [templateDirectory stringByStandardizingPath]
+  end
+}
+
+func templates_directory ?@string prefix -> @string temp_dir {
+    temp_dir = rootTemplatesDirectory()
+    if temp_dir != "" then
+        temp_dir = add_path_component(!temp_dir !prefix) 
+        # check the path is an absolute one
+        if [temp_dir characterAtIndex !0] != '/' then
+            let @string curdir = @string. stringWithCurrentDirectory
+            if [temp_dir characterAtIndex !0] == '.' & [temp_dir characterAtIndex !1] == '/' then
+                temp_dir = [[temp_dir stringByRemovingCharacterAtIndex !0] stringByRemovingCharacterAtIndex !0]
+            end
+            temp_dir = curdir + "/" + temp_dir
+        end
+        if [temp_dir characterAtIndex !([temp_dir length] - 1)] != '/' then
+            temp_dir += "/"
+        end
+    end
+#    message "templates = ".temp_dir."\n";
+}
+
+
+func templateFilePath
+  ?let @string prefix
+  ?let @string file
+  ->@string path {
+  @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  let @string templateDir = templates_directory(!prefix)
+  @bool notFound = true
+  @bool notOver = true
+  path = ""
+  
+  loop( [components length]+1)
+  while notFound & notOver do
+    let @string targetPath = templateDir+@string. componentsJoinedByString { !components !"/"}+"/"+file
+#    message "Checking ".targetPath."\n";
+    if [targetPath fileExists] then
+      notFound = false
+      path = targetPath
+    end
+    if [components length] > 0 then
+      [!?components popLast ?*]
+    else
+      notOver = false
+    end
+  end
+}
+
+func allTemplatePaths
+  ?let @string prefix
+  ->@stringlist paths
+{
+  let @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  @string partialPath = templates_directory(!prefix)
+  
+  paths = @stringlist. listWithValue { !partialPath }
+  
+  for  (@string directory) in components do
+    partialPath = add_path_component(!partialPath !directory)
+    [!?paths insertAtIndex !partialPath !0]
+  end
+}
+
+proc checkTemplatesPath
+{
+  let @string configDir = rootTemplatesDirectory() + "/config"
+  if not [configDir directoryExists] then
+    error @location.here: "The templates path '" + configDir + "' is not set to the templates directory"
+  else
+    @string partialPath = configDir
+    @bool continueIt = true
+    let @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+    for (@string comp) in components do
+      partialPath = partialPath + "/" + comp
+      if continueIt && not [partialPath directoryExists] then
+        error @location.here: "The templates path '" + partialPath + "' does not exist in the templates directory"
+        continueIt = false
+      end
+    end
+  end
+}
+
+
+func allTemplateFilePaths
+  ?let @string prefix
+  ?let @string file
+  ->@stringlist paths
+{
+  @stringlist components = [[option goil_options.target_platform value] componentsSeparatedByString !"/"]
+  let @string templateDir = templates_directory(!prefix)
+  @bool notOver = true
+  paths = @stringlist. emptyList
+  
+  loop( [components length]+1)
+  while notOver do
+    @string intermediatePath = @string. componentsJoinedByString { !components !"/"}
+    if intermediatePath != "" then intermediatePath += "/" end
+    let @string targetPath = templateDir+intermediatePath+file
+#    message "Checking ".targetPath."\n";
+    if [targetPath fileExists] then
+      paths += !targetPath
+    end
+    if [components length] > 0 then
+      [!?components popLast ?*]
+    else
+      notOver = false
+    end
+  end
+}
+
+proc prefix ?@prefix_map p ?@string key !@string val {
+    let @lstring lkey = @lstring. new { !key !@location.here}
+    [p prefix !lkey ?val ?*]
+}
+
+proc performReplace ?@prefix_map p ?@string key ?@string name ?!@string res {
+    let @lstring lkey = @lstring. new { !key !@location.here}
+    let @string prefix
+    let @string tag_to_rep
+    [p prefix !lkey ?prefix ?tag_to_rep]
+    res = [res stringByReplacingStringByString !tag_to_rep !prefix+name]
+}
+
+proc doReplace ?!@string s ?@string o ?@string n {
+  s = [s stringByReplacingStringByString !o !n]
+}
+
+proc do_replace_default ?!@string s ?@string o ?@string n ?@string d {
+  if n != "" then
+    s = [s stringByReplacingStringByString !o !n]
+  else
+    s = [s stringByReplacingStringByString !o !d]
+  end
+}
+
+proc replace_no_prefix ?@prefix_map p ?@string key ?@string name ?!@string res {
+    let @lstring lkey = @lstring. new { !key !@location.here}
+#    @string prefix ;
+    let @string tag_to_rep
+    [p prefix !lkey ?* ?tag_to_rep]
+    res = [res stringByReplacingStringByString !tag_to_rep !name]
+}
+
+#--- Declaration added by Ibrahim
+#extern routine computeRedundantCode
+#  ??@uint inBitCount
+#  ??@uint inIndex
+#  ??@uint inCorrectedBitCount
+#  !@uint outCode
+#;
+proc table_core
+    ?@string    typename
+    ?@string    varname
+    ?@string    obj_prefix
+    ?@stringset names
+    ?!@string   header
+    ?!@string   implementation {
+    @uint n = 0
+    for (@string name) in  names do
+        header = header+"#define "+varname+"_id_of_"+name+"  "+[n string]+"\n"
+#        @uint taskID ;
+#        if correctedBits == 0 then
+#          taskID := n ;
+#        else
+#          computeRedundantCode !bitCount !n !correctedBits ?taskID ;
+#        end if ;
+#        header := header."#define ".varname."_id_of_".name."  ".[taskID string]."\n" ;
+        header = header+"#define "+name+"  "+varname+"_id_of_"+name+"\n"
+        implementation = implementation+"    (tpl_"+typename+" *)&"+obj_prefix+name
+        n++
+        if n != [names count]
+        then implementation = implementation + ",\n"
+        else implementation = implementation + "\n"
+        end
+    end
+}
+
+#routine obj_table
+#    ?@string     typename
+#    ?@string     varname
+#    ?@string     prefix
+#    ?@prefix_map p
+#    ?@stringset  names
+#    !@string     header
+#    !@string     implementation
+#:
+##    @uint taskCount := [names count] ;
+##    @uint bitCount := [taskCount significantBitCount] ;
+##    @uint correctedBits := [option goil_options.corrected_bits] value ;
+#    implementation := "tpl_".typename." *tpl_".varname."_table[".[varname uppercaseString]."_COUNT] = {\n" ;
+#    header := "\n" ;
+##    @uint n := 0 ;
+#    @string obj_prefix ;
+#    @string obj_ids := "" ;
+#    prefix !p !prefix ?obj_prefix ;
+#    table_core !typename !varname !obj_prefix !names !?header !?implementation ;
+#    implementation := implementation . "};\n" ;
+#
+#    if [names count] == 0 then implementation := "" ; end if ;
+#
+##    header := header."\n#define ".[varname uppercaseString]."_COUNT ".[[names count] string] ;
+#end routine ;
+
+#routine additional_int_key_required
+#    ?? @string    key
+#    ?? @ident_map others
+#    ?? @lstring   name
+#    !  @uint      result 
+#:
+#    result := 0 ;
+#    if [others hasKey !key] then
+#        @basic_type value ;
+#        [others get ![@lstring new !key !here] ?value] ;
+#        cast value :
+#        when == @uint64_class v do
+#            result := [[v value] uint] ;
+#        when == @uint32_class v do
+#            result := [v value] ;
+#        when == @void_uint32_class do
+#            error name : key." should have a default value" ;
+#        when == @auto_uint32_class do
+#            error name : key." should not be an auto attribute" ;
+#        else
+#            error name : key." should be an integer" ;
+#        end cast ;
+#    else
+#        error name : key." not defined" ;
+#    end if ;
+#end routine;
+#
+#routine additional_string_key_required
+#    ?? @string key
+#    ?? @ident_map others
+#    ?? @lstring name
+#    !  @string result :
+#
+#    result := "";
+#    if [others hasKey !key]
+#    then
+#        @basic_type value ;
+#        [others get ![@lstring new !key !here] ?value] ;
+#        cast value :
+#        when == @string_class s do
+#            result := [s value];
+#        else 
+#            error name : key." should be a string" ;
+#        end cast ;
+#    else
+#        error name : "no ".key." specified" ;
+#    end if ;
+#end routine;
+#
+#routine additional_bool_key_required
+#    ?? @string    key
+#    ?? @ident_map others
+#    ?? @lstring   name
+#    !  @bool      result :
+#
+#    result := false;
+#    if [others hasKey !key]
+#    then
+#        @basic_type value ;
+#        [others get ![@lstring new !key !here] ?value] ;
+#        cast value :
+#        when == @bool_class b do
+#            result := [b value];
+#        else 
+#            error name : key." should be a boolean" ;
+#        end cast ;
+#    else
+#        error name : "no ".key." specified" ;
+#    end if ;
+#end routine;
+
+proc add_to_stringset
+    ?!@stringset ss
+    ?@string new {
+    if [ss hasKey !new] then
+        error @location.here : "'"+new+"' is already declared before"
+    else
+        ss += !new
+    end
+}
+
+proc file_in_path
+    ?!@lstring file_name {
+    let @string include_path = @string. stringWithEnvironmentVariableOrEmpty { !"GOIL_INCLUDE_PATH"}
+
+    # Append the directories along the path of 
+    # the target in reverse order but after the GOIL_INCLUDE_PATH
+    let @stringlist systemPaths = allTemplatePaths(!"config")
+    let @stringlist includePathList
+    if (include_path != "") then
+      includePathList = [include_path componentsSeparatedByString !":"]
+    else
+      includePathList = @stringlist.emptyList
+    end
+    let @stringlist path_list = includePathList + systemPaths
+
+    @bool not_found = true
+    for (@string path) in  path_list do
+        @string full_file_path = path
+        if full_file_path != "" then
+            if [full_file_path characterAtIndex !([full_file_path length] - 1)] != '/' then
+                full_file_path += "/"
+            end
+        end
+        full_file_path += [file_name  string]
+        if ([full_file_path fileExists] & not_found) then
+            file_name = @lstring. new { !full_file_path !@location.here}
+            not_found = false
+        end
+    end
+}
+
+proc is_in_lstringlist
+  ?@lstringlist l
+  ?@lstring     e
+  !@lstring     f
+  !@bool        p {
+  p = false
+  f = @lstring. new { !"" !@location.here}
+  for (@lstring s) in  l do
+    if [s string] == [e string] then
+      p = true
+      f = s
+    end
+  end
+}
+
+func isInLstringlist
+  ?@lstringlist l
+  ?@lstring     e
+  ->@bool       p {
+  p = false
+  for (@lstring s) in  l do
+    if [s string] == [e string] then
+      p = true
+    end
+  end
+}
+
+proc add_lstring_unique
+  ?!@lstringlist l
+  ?@lstring e
+  ?@string att {
+  let @bool found
+  let @lstring res
+  is_in_lstringlist ( !l !e ?res ?found )
+  if found then
+    error e : att+" "+[e string]+" has already be listed"
+    error res : "was listed here"
+  else
+    l += !e
+  end
+}
+
+proc set_lstring_if_empty
+  ?!@lstring s
+  ?@lstring ns
+  ?@string att {
+  if [s string] == "" then
+    s = ns
+  else
+    error ns : att+" Redefinition"
+    error s : "was defined here"
+  end
+}
+
+proc add_makefile_flag_if_not_empty
+  ?!@string receiver
+  ?@string flag_name
+  ?@string flag_value {
+  if flag_value != "" then
+    receiver += flag_name + "="+ flag_value + "\n"
+  end
+}
+
+func lstringWith ?@string s ->@lstring r {
+  r = @lstring. new { !s !@location.here}
+}
+
+func stripString ?@string s ->@string r {
+  if [s length] > 0 then
+    @uint first = 0
+    @uint last = [s length]
+    # look for the first character which is not a space
+    @bool finished = false
+    loop( [s length])
+    while not finished do
+      if [s characterAtIndex !first] == ' ' then
+        first++
+        if first == [s length] then finished = true end
+      else finished = true end 
+    end
+    # look for the last character which is not a space
+    finished = false
+    loop( [s length])
+    while not finished do
+      if [s characterAtIndex !last - 1] == ' ' then
+        last--
+        if last == 0 then finished = true end
+      else finished = true end 
+    end
+    # build the tripped string
+    if first < last then
+      r = [s subString !first !last - first]
+    else
+      r = ""
+    end
+  else
+    r = ""
+  end
+}
+
+proc errorNoFileFound
+  ?let @stringlist searchedPaths
+  ?let @string    kind
+  ?let @lstring    file {
+  @string m = "cannot find a valid path for the '" + file + "' " + kind + " file. I have tried:"
+  for () in  searchedPaths do
+    m += "\n  - '" + mValue + "'"
+  end
+  error file: m
+}
+
+func stringLBool
+  ?let @lbool boolValue
+  ->@string result {
+  if [boolValue bool] then
+    result = "TRUE"
+  else
+    result = "FALSE"
+  end
+}
+

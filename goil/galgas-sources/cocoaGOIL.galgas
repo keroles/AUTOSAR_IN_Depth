@@ -1,0 +1,43 @@
+#---------------------------------------------------------------------------*
+#
+#  @file cocoaGoil.galgas
+#
+#  @section desc File description
+#
+#  Cocoa component for GOIL
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+gui cocoa {
+with option goil_options
+
+with lexique goil_lexique {
+  fileExtension : "oil"
+  title: "Source"
+  blockComment : "//"
+}
+
+#--- Added by PM
+with lexique gtl_scanner {
+  fileExtension : "goilTemplate"
+  title: "Template"
+  blockComment : "#"
+}
+
+}

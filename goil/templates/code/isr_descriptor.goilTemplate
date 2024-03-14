@@ -1,0 +1,144 @@
+/*-----------------------------------------------------------------------------
+ * ISR % !isr::NAME % descriptor
+ */
+#define APP_% !isr::KIND %_% !isr::NAME %_START_SEC_CODE
+#include "tpl_memmap.h"
+/*
+ * ISR % !isr::NAME % function prototype
+ */
+FUNC(void, OS_APPL_CODE) % !isr::NAME %_function(void);
+#define APP_% !isr::KIND %_% !isr::NAME %_STOP_SEC_CODE
+#include "tpl_memmap.h"
+
+/*-----------------------------------------------------------------------------
+ * Target specific structures of isr % !isr::NAME %
+ */
+%
+let proc := isr
+template process_specific
+%
+
+/*
+%
+if exists TIMINGPROTECTION then
+% * EXECUTIONTIME = % !TIMINGPROTECTION::EXECUTIONTIME %, TIMEFRAME = % !TIMINGPROTECTION::TIMEFRAME %
+ * MAXOSINTERRUPTLOCKTIME = % !TIMINGPROTECTION::MAXOSINTERRUPTLOCKTIME %, MAXALLINTERRUPTLOCKTIME = % !TIMINGPROTECTION::MAXALLINTERRUPTLOCKTIME %
+%
+  foreach tp in TIMINGPROTECTION::RESOURCESLOCK do
+% * RESOURCENAME = % !RESOURCENAME %, LOCKTIME = % !LOCKTIME %
+%
+  end foreach
+else
+%  No timing protection
+%
+end if
+% */
+
+#if WITH_AUTOSAR_TIMING_PROTECTION == YES
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+# *TODO
+%
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+#endif
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+%
+if exists isr::RESOURCES then
+%/*
+ * Resources used by ISR % !NAME %
+ *
+ * %
+foreach resource in isr::RESOURCES do
+ !resource::VALUE
+between !", "
+end foreach
+%
+ */
+%end if%
+/*
+ * Static descriptor of ISR % !isr::NAME %
+ */
+CONST(tpl_proc_static, OS_CONST) % !isr::NAME %_isr_stat_desc = {
+  /* context                  */  % !isr::NAME %_CONTEXT,
+  /* stack                    */  % !isr::NAME %_STACK,
+  /* entry point (function)   */  % !isr::NAME %_function,
+  /* internal ressource       */  NULL,
+  /* ISR id                   */  % !isr::NAME %_id,
+#if WITH_OSAPPLICATION == YES
+  /* OS application id        */  %
+if AUTOSAR then
+  if OS::SCALABILITYCLASS >= 3 then
+    !isr::APPLICATION%_id,%
+  end if
+end if
+%
+#endif%
+if OS::NUMBER_OF_CORES > 1 then%
+  /* core id                  */  % !CORE_FOR_PROCESS[isr::NAME] %,
+%end if
+%
+
+  /* ISR base priority       */  % !isr::PRIORITY %,
+  /* ISR activation count     */  1,
+  /* ISR type                */  IS_ROUTINE,
+#if WITH_AUTOSAR_TIMING_PROTECTION == YES
+%
+if exists isr::TIMING_PROTECTION default (false) then
+%
+  /* execution budget */        % !isr::TIMING_PROTECTION_S::EXECUTIONBUDGET %,
+  /* timeframe        */        % !isr::TIMING_PROTECTION_S::TIMEFRAME %,
+  /* pointer to the timing
+     protection descriptor    */ &timeprotect_% !isr::NAME %
+%
+else
+%
+  /* execution budget */        0,
+  /* timeframe        */        0,
+  /* pointer to the timing
+     protection descriptor    */ NULL
+%
+end if
+%
+#endif
+};
+
+CONST(tpl_isr_static, OS_CONST) % !isr::NAME %_isr_helper = {
+  /* helper */ NULL,
+  /* next */   NULL,
+  /* id */     % !isr::NAME %_id
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+
+#define OS_START_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+/*
+ * Dynamic descriptor of ISR % !isr::NAME %
+ */
+VAR(tpl_proc, OS_VAR) % !isr::NAME %_isr_desc = {
+  /* resources                      */  NULL,
+#if WITH_OSAPPLICATION == YES
+  /* if > 0 the process is trusted  */  %
+if AUTOSAR then
+  if OS::SCALABILITYCLASS > 2 then
+    if isr::TRUSTED then !1 else !0 end if
+  end if
+else
+  !0
+end if
+%,    
+#endif /* WITH_OSAPPLICATION */
+  /* activate count                 */  0,
+  /* ISR priority                   */  % !isr::PRIORITY %,
+  /* ISR state                      */  SUSPENDED
+};
+#define OS_STOP_SEC_VAR_UNSPECIFIED
+#include "tpl_memmap.h"
+

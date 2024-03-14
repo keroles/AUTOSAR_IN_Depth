@@ -1,0 +1,114 @@
+IMPLEMENTATION avrArduino {
+  OS {
+    BOOLEAN [
+      TRUE {
+        ENUM [
+          advancedIO,serial,spi,i2c,eeprom,softwareSerial,print
+        ] LIBRARY[];
+      },
+      FALSE
+    ] BUILD = FALSE;
+
+    /* trace */
+    BOOLEAN [
+      TRUE {
+        ENUM [
+          serial
+        ] FORMAT = serial;
+      },
+      FALSE
+    ] TRACE = FALSE;
+  };
+};
+
+CPU avrArduino {
+
+  BUILDOPTIONS buildOptionsForArduino {
+    PRELDFLAGS  = "-lm"; //math lib requied
+    PREASFLAGS  = "-x assembler-with-cpp";
+    COMMONFLAGS = "-DARDUINO=10809 -Wno-unused-but-set-variable";
+    CPPFLAGS    = "-std=c++11";
+  };
+
+  PLATFORM_FILES arduinoBase {
+    PATH    = "avr/arduino/cores/arduino";
+    CPPFILE = "main.cpp";        // main
+    CFILE   = "wiring_digital.c";  // pinMode, digitalWrite, digitalRead
+    CFILE   = "wiring.c";          // millis, micors, delay... and isr for counter.
+    CFILE   = "hooks.c";           // yield (not used directly , but included in wiring)
+    CFILE   = "wiring_analog.c";   // analogWrite, analogRead, analogReference
+    CPPFILE = "WMath.cpp";         // random, randomSeed, map
+    CPPFILE = "WString.cpp";       // String type
+    CPPFILE = "WInterrupts.c";     // attachInterrupts, detachInterrupts (=> should not be used directly!)
+    CPPFILE = "abi.cpp";           // some C++ stuff.
+    CPPFILE = "new.cpp";           // some C++ stuff.
+  };
+
+  PLATFORM_FILES arduinoTrace {
+    PATH    = "avr/arduino/";
+    CPPFILE = "tpl_trace.cpp";     // trampoline trace Arduino specific stuff
+  };
+
+  GENERATED_FILES avrArduinoGenerated {
+    CFILE = "tpl_interrupts.c";
+  };
+
+  LIBRARY advancedIO {
+    PATH    = "avr/arduino/cores/arduino";
+    CPPFILE = "Tone.cpp";        // tone, noTone
+    ASFILE  = "wiring_pulse.S";
+    CPPFILE = "wiring_pulse.c";  // pulseIn, pulseInLong
+    CPPFILE = "wiring_shift.c";  // shiftIn, shiftOut
+  };
+
+  LIBRARY print {
+    PATH    = "avr/arduino/cores/arduino";
+    CPPFILE = "Print.cpp";            //Stream inherits from Print
+    CPPFILE = "Stream.cpp";           //HardwareSerial inherits from Stream 
+  };
+
+  LIBRARY serial {
+    NEEDS   = print;
+    PATH    = "avr/arduino/cores/arduino";
+    CPPFILE = "HardwareSerial0.cpp";
+    CPPFILE = "HardwareSerial1.cpp";
+    CPPFILE = "HardwareSerial2.cpp";
+    CPPFILE = "HardwareSerial3.cpp";
+    CPPFILE = "HardwareSerial.cpp";
+  };
+  
+  LIBRARY spi {
+    PATH    = "avr/arduino/libraries/SPI/src";
+    CPPFILE = "SPI.cpp";
+  };
+  
+  LIBRARY i2c {
+    PATH    = "avr/arduino/libraries/Wire/src";
+    CPPFILE = "Wire.cpp";
+    CFILE   = "utility/twi.c";
+  };
+
+  LIBRARY eeprom {
+    PATH    = "avr/arduino/libraries/EEPROM/src"; //only .h files.
+  };
+  
+  LIBRARY softwareSerial {
+    NEEDS   = print;
+    PATH    = "avr/arduino/libraries/SoftwareSerial/src";
+    CPPFILE = "SoftwareSerial.cpp";
+  };
+  
+  // not used (at this date):
+  // IPAddress.cpp
+  // PluggableUSB.cpp
+  // USBCore.cpp
+};
+
+CPU arduino {
+  COUNTER SystemCounter {
+    TICKSPERBASE = 1;
+    MAXALLOWEDVALUE = 65535;
+    MINCYCLE = 1;
+    SOURCE = TIMER0_OVF ;
+  };
+}; 

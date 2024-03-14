@@ -1,0 +1,34 @@
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+if message::MESSAGEPROPERTY == "SEND_STATIC_INTERNAL" then
+%
+/*-----------------------------------------------------------------------------
+ * Static internal sending static message object % !message::NAME %
+ */
+CONST(tpl_internal_sending_mo, OS_CONST) % !message::NAME %_message = {
+  { /* base message object       */
+    /* sending function          */ tpl_send_static_internal_message
+  },
+  /* pointer to the receiving mo */ (tpl_base_receiving_mo *)&% !message::TARGET %_message
+};
+%
+elsif message::MESSAGEPROPERTY == "SEND_ZERO_INTERNAL" then
+%
+/*-----------------------------------------------------------------------------
+ * Static internal sending zero length message object $MESSAGE_NAME$
+ */
+CONST(tpl_internal_sending_zero_mo, OS_CONST) % !message::NAME %_message = {
+  { /* base message object       */
+  /* sending function            */ tpl_send_zero_internal_message
+  },
+  /* pointer to the receiving mo */ (tpl_base_receiving_mo *)&% !message::TARGET %_message
+};
+%
+elsif message::MESSAGEPROPERTY == "SEND_STATIC_EXTERNAL" then
+display message
+end if
+%
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+

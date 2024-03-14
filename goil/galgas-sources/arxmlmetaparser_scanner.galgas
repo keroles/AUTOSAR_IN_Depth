@@ -1,0 +1,236 @@
+#---------------------------------------------------------------------------*
+#
+#  @file arxmlmetaparser_scanner.galgas
+#
+#  @section desc File description
+#
+#  Scanner for AUTOSAR's arxml's meta-data parsing.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+template lexique arxmlmetaparser_scanner {
+
+template "<" %preserved ... ""
+
+replace "&amp;" -> "&"
+replace "&lt;" -> "<"
+replace "&gt;" -> ">"
+replace "&quot;" -> "\""
+replace "&apos;" -> "'"
+replace "&#" ... ";" : codePointToUnicode
+
+style delimitersStyle -> "Delimiter" 
+style nameStyle -> "Name" 
+style attributeValue -> "Attribute value" 
+style commentStyle -> "Comment" 
+style textStyle -> "Text" 
+
+@string tokenString
+
+#-------------------------- comment  --------------------
+
+$comment$ ! tokenString style commentStyle %templateEndMark error message "a comment"
+
+message incorrectCommentError : "incorrect XML comment"
+
+rule "<!--" {
+  repeat
+  while "&amp;" :
+    enterCharacterIntoString ( !?tokenString !'&' )
+  while "&lt;" :
+    enterCharacterIntoString ( !?tokenString !'<' )
+  while "&gt;" :
+    enterCharacterIntoString ( !?tokenString !'>' )
+  while "&quot;" :
+    enterCharacterIntoString ( !?tokenString !'"' )
+  while "&apos;" :
+    enterCharacterIntoString ( !?tokenString !''' )
+  while '\u0001' -> ',' | '.' -> '\U0010FFFF' :
+    enterCharacterIntoString ( !?tokenString !* )
+  while ~ "-->" error incorrectCommentError :
+    enterCharacterIntoString ( !?tokenString !'-' )
+  end
+#  send $comment$
+  drop $comment$
+}
+
+# ----------------------------- Delimiters ---------------------------------------
+list xmlDelimitorsList style delimitersStyle error message "the '%K' delimitor"
+{
+  "<",
+  "<xsd:",
+  "</xsd:",
+  "<?xml",
+  ">" %templateEndMark,
+  "?>" %templateEndMark,
+  "/>" %templateEndMark,
+  "</",
+  "="
+}
+
+rule list xmlDelimitorsList
+
+#-------------------------- name  --------------------
+
+$xmlTag$ ! tokenString style nameStyle error message "a name"
+
+rule isUnicodeLetter {
+  repeat
+    enterCharacterIntoString ( !?tokenString !* )
+  while isUnicodeLetter | '0'->'9' | '-' | ':' :
+  end
+  send search tokenString in keyWordList default $xmlTag$
+}
+
+#-------------------------- Attribute value  --------------------
+
+$xmlTagValue$ ! tokenString style attributeValue error message "an attribute value"
+
+message incorrectAttributeEnd : "attribute value should be enclosed between apostrophes (') or quotation marks (\")"
+
+rule '"' {
+  repeat
+  while "&amp;" :
+    enterCharacterIntoString ( !?tokenString !'&' )
+  while "&lt;" :
+    enterCharacterIntoString ( !?tokenString !'<' )
+  while "&gt;" :
+    enterCharacterIntoString ( !?tokenString !'>' )
+  while "&quot;" :
+    enterCharacterIntoString ( !?tokenString !'"' )
+  while "&apos;" :
+    enterCharacterIntoString ( !?tokenString !''' )
+  while ~ "\"" error incorrectAttributeEnd :
+    enterCharacterIntoString ( !?tokenString !* )
+  end
+  send $xmlTagValue$
+}
+
+rule ''' {
+  repeat
+  while "&amp;" :
+    enterCharacterIntoString ( !?tokenString !'&' )
+  while "&lt;" :
+    enterCharacterIntoString ( !?tokenString !'<' )
+  while "&gt;" :
+    enterCharacterIntoString ( !?tokenString !'>' )
+  while "&quot;" :
+    enterCharacterIntoString ( !?tokenString !'"' )
+  while "&apos;" :
+    enterCharacterIntoString ( !?tokenString !''' )
+  while ~ "'" error incorrectAttributeEnd :
+    enterCharacterIntoString ( !?tokenString !* )
+  end
+  send $xmlTagValue$
+}
+
+# --------------------- separators -----------------------------------------
+rule '\u0001' -> ' ' {
+}
+
+
+# --------------------- keywords -----------------------------------------
+
+style keywordsStyle -> "Keywords"
+
+$identifier$ ! tokenString style textStyle error message "an identifier"
+
+#--- This is the keyword list
+list keyWordList style keywordsStyle error message "the '%K' keyword" {
+#### Xsd tag possible values
+  "group",
+  "annotation",
+  "appinfo",
+  "attribute",
+  "attributeGroup",
+  "choice",
+  "complexType",
+  "documentation",
+  "element",
+  "enumeration",
+  "extension",
+  "import",
+  "maxLength",
+  "pattern",
+  "restriction",
+  "schema",
+  "sequence",
+  "simpleContent",
+  "simpleType",
+  "whiteSpace",
+#### Attributes possible values
+  "abstract",
+  "attributeFormDefault",
+  "attributeRef",
+  "base",
+  "category",
+  "CATEGORY",
+  "color",
+  "customType",
+  "elementFormDefault",
+  "encoding",
+  "enforceMinMultiplicity",
+  "globalElement",
+  "id",
+  "latestBindingTime",
+  "maxOccurs",
+  "minOccurs",
+  "mixed",
+  "name",
+  "namePlural",
+  "namespace",
+  "noteType",
+  "nsPrefix",
+  "qualifiedName",
+  "recommendedPackage",
+  "ref",
+  "roleElement",
+  "roleWrapperElement",
+  "schemaLocation",
+  "sequenceOffset",
+  "source",
+  "Splitkey",
+  "Status",
+  "StatusRevisionBegin",
+  "targetNamespace",
+  "type",
+  "typeElement",
+  "typeWrapperElement",
+  "use",
+  "value",
+  "version",
+  "xmlns:AR",
+  "xmlns:xsd",
+#### DEBUG
+  "TODO"
+}
+
+rule '\u0001' -> '\u003B' | '\u003D' -> '\U0010FFFF'
+{
+  repeat
+    enterCharacterIntoString (!?tokenString !*)
+  while '\u0001' -> '\u003B' | '\u003D' -> '\U0010FFFF' :
+  end
+  send search tokenString in keyWordList default $identifier$
+}
+
+#----------------------------------------------------------------------------*
+
+}
+

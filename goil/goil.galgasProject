@@ -1,0 +1,168 @@
+#---------------------------------------------------------------------------*
+#
+#  @file goil.galgasProject
+#
+#  @section desc File description
+#
+#  Project file for goil.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+# 3.1.16   added trimWhiteSpaces string getter
+# 3.1.15   generate an error if the OIL_VERSION=X.Y does not correspond to
+#          any configX.Y file.
+# 3.1.14   updated to galgas 3.6.1
+# 3.1.13   added parseOIL method
+# 3.1.12   added methods to get a file list and the root templates directory 
+# 3.1.11   fix range checking of int and float
+# 3.1.10   Updated to GTL 3.0.13
+# 3.1.9    Added in OIL strings within simple quote without escape
+#          This allow to specify Windows like full paths
+# 3.1.8    Updated to GalGas 3.3.7
+# 3.1.7    Updated to GTL 3.0.12. Added a user template directory
+# 3.1.6    Updated to GTL 3.0.11. Expression data type, where list getter and
+#          where map getter. Added elementAtIndex list getter
+# 3.1.5    Updated to GTL 3.0.10. componentsJoinedByString list getter
+# 3.1.4    Added a EOF variable in the data passed to GTL. EOF location is
+#          at the end of the OIL file. EOF value is the location string.
+# 3.1.3    Updated to GTL 3.0.9. 
+# 3.1.2    Updated to GTL 3.0.8. 
+# 3.1.1    Unique structures are concatened.
+#          Fixes default argument parsing.
+# 3.1.0    Arxml parsing
+# 3.0.7    Updated to GTL 3.0.7. Updated to GALGAS 3.2.7
+# 3.0.6    Updated to GTL 3.0.6. Debugger with command files and load command
+# 3.0.5    Updated to GTL 3.0.5. Debugger with history and line editing
+# 3.0.4    Updated to GTL 3.0.4. Debugger usable
+# 3.0.3    Updated to GTL 3.0.3. Debugger in progress
+# 3.0.2    Bug fix in GTL, lazy copy bug from galgas
+# 3.0.1    Bug fix in GTL, warnings was in fact errors
+# 3.0.0    Templates parsing/execution uses GTL
+# 2.1.29   Added setBitAtIndex and bitAtIndex methods for int
+# 2.1.28   integers are now bigint in GTL. Uses of embedded GMP library
+# 2.1.27   \", \n and \\ in OIL litteral strings
+# 2.1.26   Litteral lists
+# 2.1.25   Added a variant of mapof to convert a struct into a map 
+#          Added the tab instruction
+# 2.1.24   Checks the version of goil and the version in root template
+# 2.1.23   Checks the Templates directory and the target path
+# 2.1.22   Handle the ~ expansion in --templates option
+# 2.1.21   Added a print and println instructions to template language
+#          Fixed a bug in -o option handling. Crashed when -o was an empty
+#          string
+# 2.1.20   Added -o and -r options to goil
+
+project (3:1:16) -> "goil" {
+
+  %makefile-macosx
+  %makefile-unix
+  %makefile-x86linux32-on-macosx
+  %makefile-x86linux64-on-macosx
+  %makefile-win32-on-macosx
+  %codeblocks-windows
+  
+  #specific for Mac Cocoa Version:
+  %MacOS
+  %applicationBundleBase : "fr.ls2n.str"
+  
+#---------------------------------------------------------------------------*
+# GTL
+#---------------------------------------------------------------------------*
+  "galgas-sources/GTL/galgas-sources/gtl_interface.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_types.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_expressions.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_data_types.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_scanner.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_parser.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_instruction_parser.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_module.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_module_parser.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_module_grammar.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_expression_parser.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_instructions.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_grammar.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_functions.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_options.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger_input.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger_scanner.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger_grammar.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger_parser.galgas"
+  "galgas-sources/GTL/galgas-sources/gtl_debugger_expression_parser.galgas"
+
+
+#---------------------------------------------------------------------------*
+# Goil
+#---------------------------------------------------------------------------*
+  "galgas-sources/goil_lexique.galgas"
+  "galgas-sources/goil_options.galgas"
+  "galgas-sources/goil_syntax.galgas"
+  "galgas-sources/implementation_parser.galgas"
+  "galgas-sources/implementation_types.galgas"
+  "galgas-sources/options_parser.galgas"
+  "galgas-sources/options_scanner.galgas"
+  "galgas-sources/goil_basic_types.galgas"
+  "galgas-sources/goil_routines.galgas"
+  "galgas-sources/systemConfig.galgas"
+
+#
+# Post-processing and verification
+#
+  "galgas-sources/defaults.galgas"
+  "galgas-sources/semantic_verification.galgas"
+#
+# Datatypes
+#
+  "galgas-sources/goil_types_root.galgas"
+  "galgas-sources/goil_gtl_extension.galgas"
+#
+# Code generation
+#
+  "galgas-sources/goil_code_generation.galgas"
+
+  "galgas-sources/goil_grammar.galgas"
+  "galgas-sources/goil_object_level_include.galgas"
+  "galgas-sources/goil_file_level_include.galgas"
+  "galgas-sources/goil_cpu_level_include.galgas"
+  "galgas-sources/goil_implementation_level_include.galgas"
+  "galgas-sources/goil_type_level_include.galgas"
+  "galgas-sources/options_grammar.galgas"
+  "galgas-sources/goil_program.galgas"
+
+#---------------------------------------------------------------------------*
+# ARXML parsing
+#---------------------------------------------------------------------------*
+  "galgas-sources/arxml_grammar.galgas"
+  "galgas-sources/arxml_parser.galgas"
+  "galgas-sources/arxml_scanner.galgas"
+  "galgas-sources/arxml_types.galgas"
+#
+# xsd Meta-parser
+#
+  "galgas-sources/arxmlmetaparser_scanner.galgas"
+  "galgas-sources/arxmlmetaparser_semantics.galgas"
+  "galgas-sources/arxmlmetaparser_syntax.galgas"
+  "galgas-sources/arxmlmetaparser_grammar.galgas"
+
+# Cocoa GOIL
+#
+  "galgas-sources/cocoaGOIL.galgas"
+
+}
+# vim:ft=ggs:ts=4:sw=4
+

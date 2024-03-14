@@ -1,0 +1,84 @@
+#---------------------------------------------------------------------------*
+#
+#  @file goil_options.galgas
+#
+#  @section desc File description
+#
+#  Command line options of goil.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+option goil_options {
+
+@string target_platform :
+  't',
+  "target"
+  -> "Specifies target platform. Available target platform are located in machines/ directory. Targets are specified using a path like avr/arduino."
+              
+@string project_dir :
+  'p',
+  "project"
+  -> "Specifies project directory (by default, the project directory is the name of the oil file, without the .oil extension)"
+  
+@string template_dir :
+  '\0',
+  "templates"
+  -> "Specifies template directory (used by goil for code generation)"
+  
+@bool warnMultiple :
+ '\0',
+ "warn-multiple"
+ -> "Emit a warning if an object not defined for the first time in the implementation does not have the same multiple attribute as in the first definition"
+ 
+@bool arxmlDisplayOil :
+ '\0',
+ "arxmlPrintOil"
+ -> "Display an Oil version while parsing an arxml file"
+ 
+@string config :
+  'c',
+  "config"
+  -> "Specifies the OIL config file used by goil" default "config"
+  
+#@bool   orti_on           : '\0', "orti"              -> "Generate an ORTI file" ;
+#@uint   corrected_bits    : '\0', "crc"               -> "Generate correcting code" default 0 ;
+
+#--- Added by PM for new templates
+@bool generate_log :
+  'l',
+  "logfile"
+  -> "generate a goil.log file containing the a log of the compilation"
+
+@string root :
+  'r',
+  "root"
+  -> "Specifies the root template file to use to generate the output files" default "root"
+  
+@string passOption :
+  'o',
+  "option"
+  -> "Pass options to the template root script" default ""
+
+@bool pierreOption :
+  '\0',
+  "pierre"
+  -> "Special option to pass a galgas bug to Pierre"
+}
+
+# vim:ft=ggs:ts=4:sw=4

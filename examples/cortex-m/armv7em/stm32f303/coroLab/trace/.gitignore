@@ -1,0 +1,10 @@
+build/
+trace/
+*.bin
+*.elf
+*.map
+*.py
+.vscode
+CMake*
+cmake*
+Makefile

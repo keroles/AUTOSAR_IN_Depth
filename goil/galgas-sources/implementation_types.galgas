@@ -1,0 +1,1315 @@
+#---------------------------------------------------------------------------*
+#
+#  @file implementation_types.galgas
+#
+#  @section desc File description
+#
+#  Types for implementation definition.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+enum @dataType {
+  case void 
+  case uint32Number 
+  case sint32Number 
+  case uint64Number 
+  case sint64Number 
+  case floatNumber 
+  case string 
+  case enumeration 
+  case boolean 
+  case identifier 
+  case objectType 
+  case structType
+}
+
+getter @dataType oilType -> @string result {
+  switch self
+  case void : result = "VOID"
+  case uint32Number : result = "UINT32"
+  case sint32Number : result = "INT32"
+  case uint64Number : result = "UINT64"
+  case sint64Number : result = "INT64"
+  case floatNumber : result = "FLOAT"
+  case string : result = "STRING"
+  case enumeration : result = "ENUM"
+  case boolean : result = "BOOLEAN"
+  case identifier : result = "IDENTIFIER"
+  case objectType : result = "OBJECT_TYPE"
+  case structType : result = "STRUCT"
+  end
+}
+
+getter @dataType arxmlType -> @string result {
+  switch self
+  case void : result = "TPL-VOID-DEF"
+  case uint32Number : result = "ECUC-INTEGER-PARAM-DEF"
+  case sint32Number : result = "ECUC-INTEGER-PARAM-DEF"
+  case uint64Number : result = "ECUC-INTEGER-PARAM-DEF"
+  case sint64Number : result = "ECUC-INTEGER-PARAM-DEF"
+  case floatNumber : result = "ECUC-FLOAT-PARAM-DEF"
+  case string : result = "ECUC-STRING-PARAM-DEF"
+  case enumeration : result = "ECUC-ENUMERATION-PARAM-DEF"
+  case boolean : result = "ECUC-BOOLEAN-PARAM-DEF"
+  case identifier : result = "TPL-IDENTIFIER-DEF"
+  case objectType : result = "ECUC-REFERENCE-DEF"
+  case structType : result = "ECUC-PARAM-CONF-CONTAINER-DEF"
+  end
+}
+
+list @uint32List { @location location @uint value }
+list @uint64List { @location location @uint64 value }
+list @sint32List { @location location @sint value }
+list @sint64List { @location location @sint64 value }
+list @floatList  { @location location @double value }
+list @numberList { @location location @object_t value }
+
+func stringWithUInt32List ?let @uint32List values ->@string result {
+  result = ""
+  for () in  values do result += [value string] between result += ", " end
+}
+ 
+func stringWithUInt64List ?let @uint64List values ->@string result {
+  result = ""
+  for () in  values do result += [value string] between result += ", " end
+}
+ 
+func stringWithSInt32List ?let @sint32List values ->@string result {
+  result = ""
+  for () in  values do result += [value string] between result += ", " end
+}
+ 
+func stringWithSInt64List ?let @sint64List values ->@string result {
+  result = ""
+  for () in  values do result += [value string] between result += ", " end
+}
+ 
+func stringWithFloatList ?let @floatList values ->@string result {
+  result = ""
+  for () in  values do result += [value string] between result += ", " end
+}
+ 
+func uint32ListWithNumberList ?let @numberList numbers ->@uint32List result {
+  result = @uint32List. emptyList
+  for () in  numbers do
+    result += !location !uint32OrError(!value !"")
+  end
+}
+  
+func sint32ListWithNumberList ?let @numberList numbers ->@sint32List result {
+  result = @sint32List. emptyList
+  for () in  numbers do
+    result += !location !sint32OrError(!value !"")
+  end
+}
+  
+func uint64ListWithNumberList ?let @numberList numbers ->@uint64List result {
+  result = @uint64List. emptyList
+  for () in  numbers do
+    result += !location !uint64OrError(!value !"")
+  end
+}
+  
+func sint64ListWithNumberList ?let @numberList numbers ->@sint64List result {
+  result = @sint64List. emptyList
+  for () in  numbers do
+    result += !location !sint64OrError(!value !"")
+  end
+}
+  
+func floatListWithNumberList ?let @numberList numbers ->@floatList result {
+  result = @floatList. emptyList
+  for () in  numbers do
+    result += !location !floatOrError(!value !"")
+  end
+}
+  
+abstract class @attributeRange {
+  @location location
+#  method check ??@object_t unused value:
+#  end method;
+}
+
+abstract method @attributeRange enclose !@bool isWithin ?let @attributeRange value
+
+
+class @noRange : @attributeRange {
+#  override method enclose !@bool isWithin ??@attributeRange unused value:
+#    isWithin := true;
+#  end method;
+}
+
+override method @noRange enclose !@bool isWithin ?let @attributeRange unused value {
+  isWithin = true
+}
+
+class @uint32AttributeSet : @attributeRange {
+  @uint32List valueList
+}
+
+override method @uint32AttributeSet enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = true
+  cast value
+  case == @uint32AttributeSet set :
+    for () new_ in  [set valueList] do
+      @bool ok = false
+      for () prev_ in  valueList do
+        if (new_value == prev_value) then
+          ok = true
+        end
+      end
+      isWithin = isWithin & ok
+    end
+  else
+    error [value location]: "Incompatible set. Should be a UINT32 set"
+    error location: "Previous set was declared here"
+    isWithin = false
+  end
+}
+
+class @uint64AttributeSet : @attributeRange {
+  @uint64List valueList
+}
+
+override method @uint64AttributeSet enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = true
+  cast value
+  case == @uint64AttributeSet set :
+    for () new_ in  [set valueList] do
+      @bool ok = false
+      for () prev_ in  valueList do
+        if (new_value == prev_value) then
+          ok = true
+        end
+      end
+      isWithin = isWithin & ok
+    end
+  else
+    error [value location]: "Incompatible set. Should be a UINT64 set"
+    error location: "Previous set was declared here"
+    isWithin = false
+  end
+}
+
+class @sint32AttributeSet : @attributeRange {
+  @sint32List valueList
+}
+
+override method @sint32AttributeSet enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = true
+  cast value
+  case == @sint32AttributeSet set :
+    for () new_ in  [set valueList] do
+      @bool ok = false
+      for () prev_ in  valueList do
+        if (new_value == prev_value) then
+          ok = true
+        end
+      end
+      isWithin = isWithin & ok
+    end
+  else
+    error [value location]: "Incompatible set. Should be a INT32 set"
+    error location: "Previous set was declared here"
+    isWithin = false
+  end
+}
+
+class @sint64AttributeSet : @attributeRange {
+  @sint64List valueList
+}
+
+override method @sint64AttributeSet enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = true
+  cast value
+  case == @sint64AttributeSet set :
+    for () new_ in  [set valueList] do
+      @bool ok = false
+      for () prev_ in  valueList do
+        if (new_value == prev_value) then
+          ok = true
+        end
+      end
+      isWithin = isWithin & ok
+    end
+  else
+    error [value location]: "Incompatible set. Should be a INT64 set"
+    error location: "Previous set was declared here"
+    isWithin = false
+  end
+}
+
+class @floatAttributeSet  : @attributeRange {
+  @floatList  valueList
+}
+
+override method @floatAttributeSet enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = true
+  cast value
+  case == @floatAttributeSet set :
+    for () new_ in  [set valueList] do
+      @bool ok = false
+      for () prev_ in  valueList do
+        if (new_value == prev_value) then
+          ok = true
+        end
+      end
+      isWithin = isWithin & ok
+    end
+  else
+    error [value location]: "Incompatible set. Should be a FLOAT set"
+    error location: "Previous set was declared here"
+    isWithin = false
+  end
+}
+
+class @uint32AttributeMinMax : @attributeRange {
+  @uint min
+  @uint max
+}
+
+override method @uint32AttributeMinMax enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = false
+  cast value
+  case == @uint32AttributeMinMax minmax :
+    if [minmax min] >= min & [minmax max] <= max then
+      isWithin = true
+    end
+  case == @uint32AttributeSet set :
+    isWithin = true
+    for () in  [set valueList] do
+      if value < min | value > max then
+        isWithin = false
+      end
+    end
+  else
+    error [value location]: "Incompatible set. Should be a UINT32 range or UINT32 set"
+    error location: "Previous set was declared here"
+  end
+}
+
+class @uint64AttributeMinMax : @attributeRange {
+  @uint64 min
+  @uint64 max
+}
+
+override method @uint64AttributeMinMax enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = false
+  cast value
+  case == @uint64AttributeMinMax minmax :
+    if [minmax min] >= min & [minmax max] <= max then
+      isWithin = true
+    end
+  case == @uint64AttributeSet set :
+    isWithin = true
+    for () in  [set valueList] do
+      if value < min | value > max then
+        isWithin = false
+      end
+    end
+  else
+    error [value location]: "Incompatible set. Should be a UINT64 range or UINT64 set"
+    error location: "Previous set was declared here"
+  end
+}
+
+class @sint32AttributeMinMax : @attributeRange {
+  @sint min
+  @sint max
+}
+
+override method @sint32AttributeMinMax enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = false
+  cast value
+  case == @sint32AttributeMinMax minmax :
+    if [minmax min] >= min & [minmax max] <= max then
+      isWithin = true
+    end
+  case == @sint32AttributeSet set :
+    isWithin = true
+    for () in  [set valueList] do
+      if value < min | value > max then
+        isWithin = false
+      end
+    end
+  else
+    error [value location]: "Incompatible set. Should be a INT32 range or INT32 set"
+    error location: "Previous set was declared here"
+  end
+}
+
+class @sint64AttributeMinMax : @attributeRange {
+  @sint64 min
+  @sint64 max
+}
+
+override method @sint64AttributeMinMax enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = false
+  cast value
+  case == @sint64AttributeMinMax minmax :
+    if [minmax min] >= min & [minmax max] <= max then
+      isWithin = true
+    end
+  case == @sint64AttributeSet set :
+    isWithin = true
+    for () in  [set valueList] do
+      if value < min | value > max then
+        isWithin = false
+      end
+    end
+  else
+    error [value location]: "Incompatible set. Should be a INT64 range or INT64 set"
+    error location: "Previous set was declared here"
+  end
+}
+
+class @floatAttributeMinMax  : @attributeRange {
+  @double min
+  @double max
+}
+
+override method @floatAttributeMinMax enclose !@bool isWithin ?let @attributeRange value {
+  isWithin = false
+  cast value
+  case == @floatAttributeMinMax minmax :
+    if [minmax min] >= min & [minmax max] <= max then
+      isWithin = true
+    end
+  case == @floatAttributeSet set :
+    isWithin = true
+    for () in  [set valueList] do
+      if value < min | value > max then
+        isWithin = false
+      end
+    end
+  else
+    error [value location]: "Incompatible set. Should be a FLOAT range or FLOAT set"
+    error location: "Previous set was declared here"
+  end
+}
+
+
+func attributeRangeWithNumberList
+  ?let @numberList numbers
+  ?let @dataType type
+  ->@attributeRange range {
+  if    type == @dataType. uint32Number then
+    range = @uint32AttributeSet. new { !@location.here !uint32ListWithNumberList(!numbers)}
+  elsif type == @dataType. sint32Number then
+    range = @sint32AttributeSet. new { !@location.here !sint32ListWithNumberList(!numbers)}
+  elsif type == @dataType. uint64Number then
+    range = @uint64AttributeSet. new { !@location.here !uint64ListWithNumberList(!numbers)}
+  elsif type == @dataType. sint64Number then
+    range = @sint64AttributeSet. new { !@location.here !sint64ListWithNumberList(!numbers)}
+  elsif type == @dataType. floatNumber then
+    range = @floatAttributeSet. new { !@location.here !floatListWithNumberList(!numbers)}
+  else
+    error @location.here: "internal. Unknown number type": range
+  end 
+}
+
+list @locationList { @location location }
+
+abstract class @impType {
+  @locationList   locations # locations of the declarations
+  @dataType       type      # type of the attribute
+  @lstring        name      # name of the attribute
+  @bool           multiple  # true if multiple values are possible
+  @lstringlist    descs     # description of the attribute
+}
+
+getter @impType getDefaultValue
+  ->@object_t outDefaultValue
+{
+  outDefaultValue = @void.new{!emptyLString() !.nowhere}
+}
+
+setter @impType setDefValue
+  ?@object_t unused inDefaultValue
+{
+}
+
+abstract getter @impType mergeWithType
+  ?@impType unused typeToMerge
+  ->@impType
+#{
+#  mergedType = self
+#}
+
+getter @impType autoAllowed -> @bool result {
+  result = false
+}
+
+class @impStructType : @impType {
+  @implementationObjectMap structAttributes # struct attributes
+}
+
+override getter @impStructType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  let @impStructType castTypeToMerge = typeToMerge as @impStructType
+  @implementationObjectMap mergedAttributes = .emptyMap
+  for () in structAttributes do
+    @impType mergedAttr = type
+    if [[castTypeToMerge structAttributes] hasKey ![lkey string]] then
+      [[castTypeToMerge structAttributes] get !lkey ?let @impType subTypeToMerge]
+      mergedAttr = [type mergeWithType !subTypeToMerge]
+    end
+    [!?mergedAttributes put !lkey !mergedAttr]
+  end
+  mergedType = @impStructType.new {
+    !locations + [typeToMerge locations]
+    !type
+    !name
+    !multiple
+    !descs + [typeToMerge descs]
+    !mergedAttributes
+  }
+}
+
+class @impVoid : @impType {
+}
+
+override getter @impVoid mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  mergedType = typeToMerge
+}
+
+
+class @impAutoDefaultType : @impType {
+  @bool     withAuto    # true if AUTO allowed
+  @object_t defaultValue 
+}
+
+override getter @impAutoDefaultType getDefaultValue
+  ->@object_t outDefaultValue
+{
+  outDefaultValue = defaultValue
+}
+
+override setter @impAutoDefaultType setDefValue
+  ?@object_t inDefaultValue
+{
+  defaultValue = inDefaultValue
+}
+
+override getter @impAutoDefaultType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  mergedType = typeToMerge
+}
+
+override getter @impAutoDefaultType autoAllowed -> @bool result {
+  result = withAuto
+}
+
+method @impAutoDefaultType setDefault ?!@objectAttributes attributes {
+  if not [[attributes objectParams] hasKey ![name string]] then
+    cast defaultValue
+    case == @void :
+    case == @auto :
+      @identifierMap attr = [attributes objectParams]
+      [!?attr put !name !defaultValue]
+      [!?attributes setObjectParams !attr]
+    else
+#      message "******* setObjectParams ******\n";
+      @identifierMap attr = [attributes objectParams]
+      [!?attr put !name !defaultValue]
+      [!?attributes setObjectParams !attr]
+    end
+  end
+}
+
+proc multiError ?@locationList locations ?@string errorMessage
+{
+  for () in locations do
+    error location: errorMessage
+  end
+}
+
+class @refType : @impType {
+  @lstring    ref     # name of the type
+}
+
+override getter @refType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  let @refType castTypeToMerge = typeToMerge as @refType
+  if [ref string] != [[castTypeToMerge ref] string] then
+    log ref
+    let @lstring csatRef = [castTypeToMerge ref]
+    log csatRef
+    multiError(![typeToMerge locations] !"Redefinition of "+name)
+    multiError(!locations !"Was defined here")
+  end
+  mergedType = @refType.new {
+    !locations + [typeToMerge locations]
+    !type
+    !name
+    !multiple
+    !descs + [typeToMerge descs]
+    ![castTypeToMerge ref]
+  }
+}
+
+map @implementationObjectMap {
+  @impType type
+  insert put error message "%K is duplicated in %L"
+  search get error message "%K does not exists"
+  remove del error message "%K does not exists"
+}
+
+class @implementationObject {
+  @lbool multiple 
+  @implementationObjectMap attributes 
+}
+
+map @enumValues { # a map of enumeration values
+  @implementationObjectMap subAttributes # sub attributes if any
+  insert put error message "%K is duplicated in %L"
+  search get error message "%K does not exists"
+  remove del error message "%K does not exists"
+}
+
+func valueList
+  ?let @enumValues values
+  ->@string result {
+  result = ""
+  for () in  values do
+    result += [lkey string]
+  between
+    result += ", "
+  end
+}
+
+class @impRangedType : @impAutoDefaultType {
+  @attributeRange setOrRange
+}
+
+override getter @impRangedType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  let @impRangedType castTypeToMerge = typeToMerge as @impRangedType
+  if checkRanged(!self !castTypeToMerge) then
+    mergedType = typeToMerge
+  else
+    mergedType = self
+  end
+}
+
+class @impBoolType : @impAutoDefaultType {
+  @implementationObjectMap trueSubAttributes
+  @implementationObjectMap falseSubAttributes
+}
+
+override getter @impBoolType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  let @impBoolType castTypeToMerge = typeToMerge as @impBoolType
+  @implementationObjectMap mergedTrueAttributes = .emptyMap
+  @implementationObjectMap mergedFalseAttributes = .emptyMap
+  for () in trueSubAttributes do
+    @impType mergedAttr = type
+    if [[castTypeToMerge trueSubAttributes] hasKey ![lkey string]] then
+      [[castTypeToMerge trueSubAttributes] get !lkey ?let @impType subTypeToMerge]
+      mergedAttr = [type mergeWithType !subTypeToMerge]
+    end
+    [!?mergedTrueAttributes put !lkey !mergedAttr]
+  end
+  # add new attributes from mergedType
+  for () in [castTypeToMerge trueSubAttributes] do
+    if not [trueSubAttributes hasKey ![lkey string]] then
+      [!?mergedTrueAttributes put !lkey !type]
+    end
+  end
+  
+  for () in falseSubAttributes do
+    @impType mergedAttr = type
+    if [[castTypeToMerge falseSubAttributes] hasKey ![lkey string]] then
+      [[castTypeToMerge falseSubAttributes] get !lkey ?let @impType subTypeToMerge]
+      mergedAttr = [type mergeWithType !subTypeToMerge]
+    end
+    [!?mergedFalseAttributes put !lkey !mergedAttr]
+  end
+  # add new attributes from mergedType
+  for () in [castTypeToMerge falseSubAttributes] do
+    if not [falseSubAttributes hasKey ![lkey string]] then
+      [!?mergedTrueAttributes put !lkey !type]
+    end
+  end
+  
+  mergedType = @impBoolType.new {
+    !locations + [typeToMerge locations]
+    !type
+    !name
+    !multiple
+    !descs + [typeToMerge descs]
+    !withAuto
+    ![castTypeToMerge defaultValue]
+    !mergedTrueAttributes
+    !mergedFalseAttributes
+  }
+}
+
+
+override method @impBoolType setDefault ?!@objectAttributes attributes {
+#  if not [[attributes objectParams] hasKey ![name string]] then
+    cast defaultValue
+    case == @void :
+    case == @auto :
+    case == @boolAttribute b :
+#      message "*** ".name." : ".[[b value] cString]."\n";
+      if [[attributes objectParams] hasKey ![name string]] then
+        # the value has been set by the user, get the default subvalues
+        # corresponding to the value set
+        @identifierMap userAttributes = [attributes objectParams]
+        let @object_t value
+        [userAttributes get !name ?value]
+        cast value
+        case == @boolAttribute boolValue :
+          let @implementationObjectMap subImpAttributes
+          if [boolValue value] then
+            subImpAttributes = trueSubAttributes
+          else
+            subImpAttributes = falseSubAttributes
+          end
+          @objectAttributes subAttributes = [boolValue subAttributes]
+          setDefaultsForType ( !subImpAttributes !?subAttributes)
+          # update the attribute
+          @boolAttribute bv = boolValue
+          [!?bv setSubAttributes !subAttributes]
+          [!?userAttributes setValueForKey !bv ![name string]]
+          [!?attributes setObjectParams !userAttributes]
+        else end
+      else
+        let @implementationObjectMap subImpAttributes
+        if [b value] then
+          subImpAttributes = trueSubAttributes
+        else
+          subImpAttributes = falseSubAttributes
+        end
+        @objectAttributes subAttributes = emptyObject()
+        setDefaultsForType ( !subImpAttributes !?subAttributes)
+        let @boolAttribute defaults = @boolAttribute. new { ![b oil_desc] ![b location] ![b value] !subAttributes}
+        @identifierMap attr = [attributes objectParams]
+        [!?attr put !name !defaults]
+        [!?attributes setObjectParams !attr]
+      end
+    else end
+#  end if;
+}
+
+
+class @impEnumType : @impAutoDefaultType {
+  @enumValues valuesMap
+}
+
+getter @enumValues mergeWithEnum
+  ?let @enumValues enumToMerge
+  ->@enumValues mergedEnum
+{
+  mergedEnum = .emptyMap
+  for () in self do
+    @implementationObjectMap attributes = subAttributes
+    if [enumToMerge hasKey ![lkey string]] then
+      [enumToMerge get !lkey ?let @implementationObjectMap attributesToMerge]
+      attributes = [subAttributes mergeImplementationObjectAttributesWith !attributesToMerge]
+    end
+    [!?mergedEnum put !lkey !attributes]
+  end
+  for () in enumToMerge do
+    if not [self hasKey ![lkey string]] then
+      [!?mergedEnum put !lkey !subAttributes]
+    end
+  end
+}
+
+override getter @impEnumType mergeWithType
+  ?@impType typeToMerge
+  ->@impType mergedType
+{
+  let @impEnumType castTypeToMerge = typeToMerge as @impEnumType
+  mergedType = @impEnumType.new {
+    !locations + [typeToMerge locations]
+    !type
+    !name
+    !multiple
+    !descs + [typeToMerge descs]
+    !withAuto
+    ![castTypeToMerge defaultValue]
+    ![valuesMap mergeWithEnum ![castTypeToMerge valuesMap]]
+  }
+}
+
+
+#
+# verifyEnum verifies an enum has a default value equal
+# to one of the defined values
+#
+proc verifyEnum ?let @impType anEnum {
+  cast anEnum
+  case == @impEnumType realEnum :
+    cast [realEnum defaultValue]
+    case == @string_class defaultValue :
+      if not [[realEnum valuesMap] hasKey ![defaultValue value]] then
+        error [defaultValue location]: "Default enum value does not match any enum value"
+      end
+    else end
+  else
+    for () in [anEnum locations] do
+      error location: "Internal, not an @impEnumType"
+    end
+  end
+}
+
+
+map @implementationMap {
+  @implementationObject obj
+  insert put error message "%K is duplicated in %L"
+  search get error message "%K does not exists"
+  remove del error message "%K does not exists"
+}
+
+class @implementation {
+  @implementationMap imp
+}
+
+getter @implementation hasKey
+  ?let @string key
+  ->@bool result {
+  result = [imp hasKey !key]
+}
+
+getter @implementation hasLKey
+  ?let @lstring key
+  ->@bool result {
+  result = [imp hasKey ![key string]]
+}
+
+getter @implementation impObject
+  ?let @string objKind
+  ->@implementationObject obj {
+  obj = @implementationObject. new { !@lbool. new { !false !@location.here} !@implementationObjectMap. emptyMap}
+  if [imp hasKey !objKind] then
+    [imp get !lstringWith(!objKind) ?obj]
+  end
+}
+
+method @implementation checkTypeForKind
+  ?let @string objKind
+  ?let @string attributeName
+  ?let @dataType expectedType {
+  let @implementationObject obj = [self impObject !objKind]
+  checkTypeForAttribute ( ![obj attributes] !attributeName !expectedType)
+}
+
+method @implementation checkObjectReferences {
+  for () in  imp do
+    for () in  [obj attributes] do
+      [type checkAttributeReferences !self]
+    end
+  end
+}
+
+func checkAndGetIntegerNumber
+  ?let @lstring oil_desc
+  ?let @dataType type
+  ?let @luint64 number
+  ?let @bool signed
+  ->@object_t value
+{
+  if signed then
+    if type == @dataType. sint32Number then
+      value = @sint32_class. new { !oil_desc ![number location] ![[number uint64] sint] * -1}
+    elsif type == @dataType. sint64Number then
+      value = @sint64_class. new { !oil_desc ![number location] ![[number uint64] sint64] * -1}
+    else
+      value = @void. new { !oil_desc ![number location]} 
+      error number: [type oilType]+" expected, got a SINT"
+    end
+  else
+    if type == @dataType. sint32Number then
+      value = @sint32_class. new { !oil_desc ![number location] ![[number uint64] sint]}
+    elsif type == @dataType. sint64Number then
+      value = @sint64_class. new { !oil_desc ![number location] ![[number uint64] sint64]}
+    elsif type == @dataType. uint32Number then
+      value = @uint32_class. new { !oil_desc ![number location] ![[number uint64] uint]}
+    elsif type == @dataType. uint64Number then
+      value = @uint64_class. new { !oil_desc ![number location] ![number uint64]}
+    else
+      value = @void. new { !oil_desc ![number location]}
+      error number: [type oilType]+" expected, got a UINT"
+    end
+  end
+}
+
+func checkAndGetFloatNumber
+  ?let @lstring oil_desc
+  ?let @dataType type
+  ?let @ldouble number
+  ?let @bool signed
+  ->@object_t value {
+  if signed then
+    if type == @dataType. floatNumber then
+      value = @float_class. new { !oil_desc ![number location] ![number double] * -1.0}
+    else
+      value = @void. new { !oil_desc ![number location]}
+      error number: [type oilType]+" expected, got a FLOAT"
+    end
+  else
+    if type == @dataType. floatNumber then
+      value = @float_class. new { !oil_desc ![number location] ![number double]}
+    else
+      value = @void. new { !oil_desc ![number location]}
+      error number: [type oilType]+" expected, got a FLOAT"
+    end
+  end
+}
+ 
+proc checkTypeForAttribute
+  ?let @implementationObjectMap obj
+  ?let @string attributeName
+  ?let @dataType expectedType {
+  if [obj hasKey !attributeName] then
+    let @impType type
+    [obj get !lstringWith(!attributeName) ?type]
+    if [type type] != expectedType then
+      for () in [type locations] do
+        error location: attributeName+" is a "+[[type type] oilType]
+        error location: attributeName+" should be a "+[expectedType oilType]
+      end
+    end
+  end
+}
+
+func boolSubAttributes
+  ?let @implementationObject obj
+  ?let @string attributeName
+  ?let @bool boolValue
+  ->@implementationObjectMap subImplementation {
+  subImplementation = @implementationObjectMap. emptyMap
+  if [[obj attributes] hasKey !attributeName] then
+    let @impType type
+    [[obj attributes] get !lstringWith(!attributeName) ?type]
+    cast type
+    case == @impBoolType boolType :
+      if boolValue then
+        subImplementation = [boolType trueSubAttributes]
+      else
+        subImplementation = [boolType falseSubAttributes]
+      end
+    else end
+  end
+}
+
+func enumSubAttributes
+  ?let @implementationObject obj
+  ?let @string attributeName
+  ?let @string enumValue
+  ->@implementationObjectMap subImplementation {
+  subImplementation = @implementationObjectMap. emptyMap
+  if [[obj attributes] hasKey !attributeName] then
+    let @impType type
+    [[obj attributes] get !lstringWith(!attributeName) ?type]
+    cast type
+    case == @impEnumType enumType :
+      if [[enumType valuesMap] hasKey !enumValue] then
+        [[enumType valuesMap] get !lstringWith(!enumValue) ?subImplementation]
+      end
+    else end
+  end
+}
+
+#
+# checkFilters
+#
+proc checkFilters
+  ?let @implementationObject messageProperty {
+  @implementationObjectMap filter = enumSubAttributes(!messageProperty !"FILTER" !"MASKEDNEWEQUALSX")
+  checkTypeForAttribute ( !filter !"MASK" !@dataType. uint64Number)
+  checkTypeForAttribute ( !filter !"X" !@dataType. uint64Number)
+  filter = enumSubAttributes(!messageProperty !"FILTER" !"MASKEDNEWDIFFERSX")
+  checkTypeForAttribute ( !filter !"MASK" !@dataType. uint64Number)
+  checkTypeForAttribute ( !filter !"X" !@dataType. uint64Number)
+  filter = enumSubAttributes(!messageProperty !"FILTER" !"MASKEDNEWEQUALSMASKEDOLD")
+  checkTypeForAttribute ( !filter !"MASK" !@dataType. uint64Number)
+  filter = enumSubAttributes(!messageProperty !"FILTER" !"NEWISWITHIN")
+  checkTypeForAttribute ( !filter !"MIN" !@dataType. uint64Number)
+  checkTypeForAttribute ( !filter !"MAX" !@dataType. uint64Number)
+  filter = enumSubAttributes(!messageProperty !"FILTER" !"NEWISOUTSIDE")
+  checkTypeForAttribute ( !filter !"MIN" !@dataType. uint64Number)
+  checkTypeForAttribute ( !filter !"MAX" !@dataType. uint64Number)
+  filter = enumSubAttributes(!messageProperty !"FILTER" !"ONEEVERYN")
+  checkTypeForAttribute ( !filter !"PERIOD" !@dataType. uint32Number)
+  checkTypeForAttribute ( !filter !"OFFSET" !@dataType. uint32Number)
+}
+
+
+
+#=============================================================================
+# checkObjectReferences crosses check the implementation to verify each
+# objectType is in the implementation
+#=============================================================================
+# Categories to check the object reference is ok
+method @impType checkAttributeReferences ?let @implementation unused imp { }
+
+override method @refType checkAttributeReferences
+  ?let @implementation imp
+{
+  if not [imp hasKey ![ref string]] then
+    error ref: [ref string]+" object kind does not exist"
+  end 
+}
+
+override method @impBoolType checkAttributeReferences
+  ?let @implementation imp
+{
+  for () in  trueSubAttributes do
+    [type checkAttributeReferences !imp]
+  end 
+  for () in  falseSubAttributes do
+    [type checkAttributeReferences !imp]
+  end 
+}
+
+override method @impEnumType checkAttributeReferences
+  ?let @implementation imp
+{
+  for () in  valuesMap do
+    for () in  subAttributes do
+      [type checkAttributeReferences !imp]
+    end 
+  end 
+}
+
+
+proc setDefaultsForType
+  ?let @implementationObjectMap impObject
+  ?!@objectAttributes objectParams {
+  for () in  impObject do
+    cast type
+    case >= @impAutoDefaultType defaultType :
+      [defaultType setDefault !?objectParams]
+    else end 
+  end
+}
+
+# Merge two implementation objects
+getter @implementationObject mergeImplementationObjectWith
+  ?let @implementationObject objToMerge
+  ->@implementationObject mergedObj
+{
+  if multiple != [objToMerge multiple] then
+    if [option goil_options.warnMultiple value] then
+      warning [objToMerge multiple]:"multiple redefinition"
+      warning multiple:"was defined here"
+    end
+  end
+#  message "##################################################################################\n"
+#  message "***************\n"
+#  message "*** merging ***\n"
+#  message "***************\n"
+#  @implementationObject selfcopy = self
+#  log selfcopy
+#  message "***************\n"
+#  message "***** with ****\n"
+#  message "***************\n"
+#  log objToMerge
+  mergedObj = .new { !multiple ![attributes mergeImplementationObjectAttributesWith ![objToMerge attributes]] }
+#  message "***************\n"
+#  message "**** result ***\n"
+#  message "***************\n"
+#  log mergedObj
+#  message "##################################################################################\n"
+}
+
+# Merge two implementation attribute map
+getter @implementationObjectMap mergeImplementationObjectAttributesWith
+  ?let @implementationObjectMap attributesToMerge
+  ->@implementationObjectMap mergedAttributes
+{
+  mergedAttributes = .emptyMap
+  for () in self do
+    @impType merged = type
+    if [attributesToMerge hasKey ![lkey string]] then
+      [attributesToMerge get !lkey ?let @impType typeToMerge]
+      if [type dynamicType] == [typeToMerge dynamicType] then
+        merged = [type mergeWithType !typeToMerge]
+      else
+        # conflicting types
+        error lkey : "Redefined type"
+      end
+    end
+    [!?mergedAttributes put !lkey !merged]
+  end
+  for () in attributesToMerge do
+    if not [self hasKey ![lkey string]] then
+      [!?mergedAttributes put !lkey !type]
+    end
+  end
+}
+
+####
+
+abstract getter @attributeRange contains
+  ?let @object_t obj
+  -> @bool
+  
+abstract getter @attributeRange string -> @string
+  
+override getter @noRange contains
+  ?let @object_t unused obj
+  -> @bool isInside
+{
+  isInside = true
+}
+
+override getter @noRange string -> @string desc
+{
+  desc = "?"
+}
+
+override getter @uint32AttributeSet contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @uint32_class intVal:
+    isInside = false
+    for () in valueList do
+      isInside = isInside | value == [intVal value]
+    end
+  else 
+    isInside = false
+    error obj: "UINT32 expected"
+  end
+}
+
+override getter @uint32AttributeSet string -> @string desc
+{
+  desc = ""
+  for () in valueList do
+    desc += [value string]
+  between
+    desc += ", "  
+  end
+}
+
+override getter @uint32AttributeMinMax contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @uint32_class intVal:
+    isInside = min <= [intVal value] && [intVal value] <= max
+  else 
+    isInside = false
+    error obj: "UINT32 expected"
+  end
+}
+
+override getter @uint32AttributeMinMax string -> @string desc
+{
+  desc = [min string] + ".." + [max string]
+}
+
+override getter @sint32AttributeSet contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @sint32_class intVal:
+    isInside = true
+    for () in valueList do
+      isInside = isInside & value == [intVal value]
+    end
+  else 
+    isInside = false
+    error obj: "SINT32 expected"
+  end
+}
+
+override getter @sint32AttributeSet string -> @string desc
+{
+  desc = ""
+  for () in valueList do
+    desc += [value string]
+  between
+    desc += ", "  
+  end
+}
+
+override getter @sint32AttributeMinMax contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @sint32_class intVal:
+    isInside = min <= [intVal value] && [intVal value] <= max
+  else 
+    isInside = false
+    error obj: "SINT32 expected"
+  end
+}
+
+override getter @sint32AttributeMinMax string -> @string desc
+{
+  desc = [min string] + ".." + [max string]
+}
+
+override getter @uint64AttributeSet contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @uint64_class intVal:
+    isInside = true
+    for () in valueList do
+      isInside = isInside & value == [intVal value]
+    end
+  else 
+    isInside = false
+    error obj: "UINT64 expected"
+  end
+}
+
+override getter @uint64AttributeSet string -> @string desc
+{
+  desc = ""
+  for () in valueList do
+    desc += [value string]
+  between
+    desc += ", "  
+  end
+}
+
+override getter @uint64AttributeMinMax contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @uint64_class intVal:
+    isInside = min <= [intVal value] && [intVal value] <= max
+  else 
+    isInside = false
+    error obj: "UINT64 expected"
+  end
+}
+
+override getter @uint64AttributeMinMax string -> @string desc
+{
+  desc = [min string] + ".." + [max string]
+}
+
+override getter @sint64AttributeSet contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @sint64_class intVal:
+    isInside = true
+    for () in valueList do
+      isInside = isInside & value == [intVal value]
+    end
+  else 
+    isInside = false
+    error obj: "SINT64 expected"
+  end
+}
+
+override getter @sint64AttributeSet string -> @string desc
+{
+  desc = ""
+  for () in valueList do
+    desc += [value string]
+  between
+    desc += ", "  
+  end
+}
+
+
+override getter @sint64AttributeMinMax contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @sint64_class intVal:
+    isInside = min <= [intVal value] && [intVal value] <= max
+  else 
+    isInside = false
+    error obj: "SINT64 expected"
+  end
+}
+
+override getter @sint64AttributeMinMax string -> @string desc
+{
+  desc = [min string] + ".." + [max string]
+}
+
+override getter @floatAttributeSet contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @float_class intVal:
+    isInside = true
+    for () in valueList do
+      isInside = isInside & value == [intVal value]
+    end
+  else 
+    isInside = false
+    error obj: "FLOAT expected"
+  end
+}
+
+override getter @floatAttributeSet string -> @string desc
+{
+  desc = ""
+  for () in valueList do
+    desc += [value string]
+  between
+    desc += ", "  
+  end
+}
+
+override getter @floatAttributeMinMax contains
+  ?let @object_t obj
+  -> @bool isInside
+{
+  cast obj
+  case == @float_class intVal:
+    isInside = min <= [intVal value] && [intVal value] <= max
+  else 
+    isInside = false
+    error obj: "FLOAT expected"
+  end
+}
+
+override getter @floatAttributeMinMax string -> @string desc
+{
+  desc = [min string] + ".." + [max string]
+}
+

@@ -1,0 +1,195 @@
+#---------------------------------------------------------------------------*
+#
+#  @file goil_types_root.galgas
+#
+#  @section desc File description
+#
+#  Main types for goil.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+
+map @objectKindMap {
+  @objectAttributes attributes
+  insert put error message "%K is duplicated in %L"
+  search get error message "%K does not exists"
+  remove del error message "%K does not exists"
+}
+
+class @objectKind {
+  @objectKindMap objects 
+}
+
+map @objectsMap {
+  @objectKind objectsOfKind
+  insert put error message "%K is duplicated in %L"
+  search get error message "%K does not exists"
+  remove del error message "%K does not exists"
+}
+
+class @applicationDefinition {
+  @lstring name 
+  @lstring cpuDescription 
+  @lstring version 
+  @lstring versionDescription 
+  @objectsMap objects 
+}
+
+func emptyApplicationDefinition -> @applicationDefinition result {
+  result = @applicationDefinition. new {
+    !emptyLString()
+    !emptyLString()
+    !emptyLString()
+    !emptyLString()
+    !@objectsMap. emptyMap}
+}
+
+func osObject
+  ?let @objectsMap objects
+  ->@objectAttributes os {
+  let @objectKind objectsForKind
+  [objects get !lstringWith(!"OS") ?objectsForKind]
+  let @lstringlist names = [[objectsForKind objects] keyList]
+  let @lstring name
+  [names first ?name]
+  [[objectsForKind objects] get !name ?os]
+}
+
+func objectForKindAndName
+  ?let @objectsMap objects
+  ?let @string kind
+  ?let @string name
+  ->@objectAttributes object {
+  if [objects hasKey !kind] then
+    let @objectKind kindObj
+    [objects get !lstringWith(!kind) ?kindObj]
+    if [[kindObj objects] hasKey !name] then
+      [[kindObj objects] get !lstringWith(!name) ?object]
+    else
+      object = @objectAttributes. new { !@identifierMap. emptyMap}
+    end
+  else
+    object = @objectAttributes. new { !@identifierMap. emptyMap}
+  end
+}
+
+proc setObjectForKindAndName
+  ?!@objectsMap objects
+  ?let @string kind
+  ?let @string name
+  ?let @objectAttributes object {
+  let @lstring lkind = lstringWith(!kind)
+  let @lstring lname = lstringWith(!name)
+  @objectKind kindObj = @objectKind. new { !@objectKindMap. emptyMap}
+  if [objects hasKey !kind] then
+    [!?objects del !lkind ?kindObj]
+  end
+  @objectKindMap kindMap = [kindObj objects]
+  if [kindMap hasKey !name] then
+    [!?kindMap del !lname ?*]
+  end
+  [!?kindMap put !lname !object]
+  [!?kindObj setObjects !kindMap]
+  [!?objects put !lkind !kindObj]
+}
+
+func objectsForKind
+  ?let @objectsMap objects
+  ?let @string kind
+  ->@objectKind result {
+  if [objects hasKey !kind] then
+    [objects get !lstringWith(!kind) ?result]
+  else
+    result = @objectKind. new { !@objectKindMap. emptyMap}
+  end
+}
+  
+func listInOS
+  ?let @objectsMap objects
+  ?let @string attributeName
+  ->@identifierList items {
+  let @object_t itemsContainer
+  let @objectAttributes os = osObject(!objects)
+  [[os objectParams] get !lstringWith(!attributeName) ?itemsContainer]
+  items = multipleAttributeOrError(!itemsContainer !attributeName)
+}
+
+#function boolInOS
+#  ??@objectsMap objects
+#  ??@string attributeName
+#  ->@boolAttribute bool
+#:
+#  @object_t boolContainer;
+#  @objectAttributes os := osObject[!objects];
+#  [[os objectParams] get !lstringWith[!attributeName] ?boolContainer];
+#  cast boolContainer:
+#  when == @boolAttribute boolAttr do
+#    bool := boolAttr;
+#  else
+#    bool := [@boolAttribute new ![boolContainer location] !false !emptyObject[]];
+#    error [boolContainer location]: "Internal error, ".attributeName." has a wrong datatype";
+#  end cast;
+#end function;
+
+#
+#routine setSTRINGAttributeIfVoid
+#  ?!@identifierMap object
+#  ??@string name
+#  ??@location location
+#  ??@string value
+#:
+#  if not [object hasKey !name] then
+#    [!?object put !lstringWith[!name] ![@stringAttribute new !location !value]];
+#  end if;
+#end routine;
+  
+#routine setUINT32AttributeIfVoid
+#  ?!@identifierMap object
+#  ??@string name
+#  ??@location location
+#  ??@uint value
+#:
+#  if not [object hasKey !name] then
+#    [!?object put !lstringWith[!name] ![@uint32_class new !location !value]];
+#  end if;
+#end routine;
+
+#routine setENUMAttributeIfVoid
+#  ?!@identifierMap object
+#  ??@string name
+#  ??@location location
+#  ??@string value
+#  ??@objectAttributes subAttributes
+#:
+#  if not [object hasKey !name] then
+#    [!?object put !lstringWith[!name] ![@enumAttribute new !location !value !subAttributes]];
+#  end if;
+#end routine;
+
+#routine setMULTIPLEAttributeIfVoid
+#  ?!@identifierMap object
+#  ??@string name
+#  ??@location location
+#  ??@identifierList value
+#:
+#  if not [object hasKey !name] then
+#    [!?object put !lstringWith[!name] ![@multipleAttribute new !location !value]];
+#  end if;
+#end routine;
+

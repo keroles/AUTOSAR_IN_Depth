@@ -1,0 +1,124 @@
+%
+import "join"
+
+%/*-----------------------------------------------------------------------------
+ * OS Application % !app::NAME %
+ */
+%
+if app::STARTUPHOOK then %
+FUNC(void, OS_CODE) StartupHook_% !app::NAME %();
+%
+end if
+if app::SHUTDOWNHOOK then %
+FUNC(void, OS_CODE) ShutdownHook_% !app::NAME %();
+%
+end if
+
+if app::PROCESSACCESSNUM > 0 then
+%
+/* % !app::PROCESSACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_procs_access[% !app::PROCESSACCESSNUM %] = { % !join(app::PROCESSACCESSITEMS) % };
+%
+end if
+if app::ALARMACCESSNUM > 0 then
+%/* % !app::ALARMACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_alarms_access[% !app::ALARMACCESSNUM %] = { % !join(app::ALARMACCESSITEMS) % };
+%
+end if
+if app::SPINLOCKACCESSNUM > 0 then
+%/* % !app::SPINLOCKACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_spinlocks_access[% !app::SPINLOCKACCESSNUM %] = { % !join(app::SPINLOCKACCESSITEMS) % };
+%
+end if
+if app::RESOURCEACCESSNUM > 0 then
+%/* % !app::RESOURCEACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_rezs_access[% !app::RESOURCEACCESSNUM %] = { % !join(app::RESOURCEACCESSITEMS) % };
+%
+end if
+if app::SCHEDULETABLEACCESSNUM > 0 then
+%/* % !app::SCHEDULETABLEACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_sts_access[% !app::SCHEDULETABLEACCESSNUM %] = { % !join(app::SCHEDULETABLEACCESSITEMS) % };
+%
+end if
+if app::COUNTERACCESSNUM > 0 then
+%/* % !app::COUNTERACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_cnts_access[% !app::COUNTERACCESSNUM %] = { % !join(app::COUNTERACCESSITEMS) % };
+%
+end if
+if app::IOCREADACCESSNUM > 0 then
+%/* % !app::IOCREADACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_iocs_read_access[% !app::IOCREADACCESSNUM %] = { % !join(app::IOCREADACCESSITEMS) % };
+%
+end if
+if app::IOCWRITEACCESSNUM > 0 then
+%/* % !app::IOCWRITEACCESSVECTOR % */
+CONST(uint8, OS_CONST) % !app::NAME %_iocs_write_access[% !app::IOCWRITEACCESSNUM %] = { % !join(app::IOCWRITEACCESSITEMS) % };
+%
+end if
+%
+%
+foreach proc in app::PROCESS
+  before %CONST(tpl_proc_id, OS_CONST) % !app::NAME %_proc_own[% ![app::PROCESS length] %] = { %
+  do !proc::VALUE%_id%
+  between %, %
+  after % };
+%
+end foreach
+
+foreach alarm in app::ALARM
+  before %CONST(tpl_alarm_id, OS_CONST) % !app::NAME %_alarm_own[% ![app::ALARM length] %] = { %
+  do !alarm::VALUE%_id%
+  between %, %
+  after % };
+%
+end foreach
+
+foreach rez in app::RESOURCE
+  before %CONST(tpl_resource_id, OS_CONST) % !app::NAME %_rez_own[% ![app::RESOURCE length] %] = { %
+  do !rez::VALUE%_id%
+  between %, %
+  after % };
+%
+end foreach
+
+foreach st in app::SCHEDULETABLE
+  before %CONST(tpl_schedtable_id, OS_CONST) % !app::NAME %_st_own[% ![app::SCHEDULETABLE length] %] = { %
+  do !st::VALUE%_id%
+  between %, %
+  after % };
+%
+end foreach
+
+foreach counter in app::COUNTER
+  before %CONST(tpl_counter_id, OS_CONST) % !app::NAME %_cnt_own[% ![app::COUNTER length] %] = { %
+  do !counter::VALUE%_id%
+  between %, %
+  after % };
+%
+end foreach
+%
+CONST(tpl_app_access, OS_CONST) % !app::NAME %_app_access = {
+  % if app::STARTUPHOOK then %StartupHook_% !app::NAME else %NULL% end if%,
+  % if app::SHUTDOWNHOOK then %ShutdownHook_% !app::NAME else %NULL% end if%,
+  {
+    % if app::PROCESSACCESSNUM > 0 then !app::NAME %_procs_access% else %NULL% end if %,
+    % if app::ALARMACCESSNUM > 0 then !app::NAME %_alarms_access% else %NULL% end if %,
+    % if app::RESOURCEACCESSNUM > 0 then !app::NAME %_rezs_access% else %NULL% end if %,
+    % if app::SCHEDULETABLEACCESSNUM > 0 then !app::NAME %_sts_access% else %NULL% end if %,
+    % if app::COUNTERACCESSNUM > 0 then !app::NAME %_cnts_access% else %NULL% end if %,
+    % if app::IOCREADACCESSNUM > 0 then !app::NAME %_iocs_read_access% else %NULL% end if %,
+    % if app::IOCWRITEACCESSNUM > 0 then !app::NAME %_iocs_write_access% else %NULL% end if %,
+    % if app::SPINLOCKACCESSNUM > 0 then !app::NAME %_spinlocks_access% else %NULL% end if %
+  },
+  % if [app::PROCESS length] > 0 then !app::NAME %_proc_own% else %NULL% end if %,
+  % if [app::ALARM length] > 0 then !app::NAME %_alarm_own% else %NULL% end if %,
+  % if [app::RESOURCE length] > 0 then !app::NAME %_rez_own% else %NULL% end if %,
+  % if [app::SCHEDULETABLE length] > 0 then !app::NAME %_st_own% else %NULL% end if %,
+  % if [app::COUNTER length] > 0 then !app::NAME %_cnt_own% else %NULL% end if %,
+  % ![app::PROCESS length] %,
+  % ![app::ALARM length] %,
+  % ![app::RESOURCE length] %,
+  % ![app::SCHEDULETABLE length] %,
+  % ![app::COUNTER length] %,
+  % if app::HAS_RESTARTTASK then !app::HAS_RESTARTTASK_S::RESTARTTASK%_id% else %INVALID_PROC_ID% end if%
+};

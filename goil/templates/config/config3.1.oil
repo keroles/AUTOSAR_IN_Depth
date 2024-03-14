@@ -1,0 +1,12 @@
+/*
+ * AUTOSAR 3.1
+ *
+ * This version of AUTOSAR add the RESOURCE attribute in the APPLICATION object.
+ */
+#include "autosar_common.oil"
+
+IMPLEMENTATION trampoline_autosar {
+  APPLICATION [] {
+    RESOURCE_TYPE RESOURCE [];
+  };
+};

@@ -1,0 +1,139 @@
+%
+#
+# Generate the system calls according to the configuration
+#
+let APIMAP := mapof APICONFIG by NAME
+let APIUSED := @()
+
+let APIUSED += APIMAP["os"]
+let APIUSED += APIMAP["interrupt"]
+
+#
+# Check and generate system calls
+#
+if [TASKS length] > 0 then
+  let APIUSED += APIMAP["task"]
+end if
+if [RESOURCES length] > 0 | OS::USERESSCHEDULER then
+  let APIUSED += APIMAP["resource"]
+end if
+if [TASKS length] > 0  & [EVENTS length] > 0 then
+  let APIUSED += APIMAP["event"]
+end if
+if [ALARMS length] > 0 then
+  let APIUSED += APIMAP["alarm"]
+end if
+if [MESSAGES length] > 0 then
+  let APIUSED += APIMAP["message"]
+end if
+
+if exists SEMAPHORE then
+  if [SEMAPHORE length] > 0 then
+    let APIUSED += APIMAP["semaphore"]
+  end if
+end if
+
+# AUTOSAR
+if OS::SCALABILITYCLASS > 0 then
+  let APIUSED += APIMAP["counter"]
+  let APIUSED += APIMAP["scheduletables"]
+  let APIUSED += APIMAP["isrs"]
+end if
+if OS::SCALABILITYCLASS > 2 then
+  let APIUSED += APIMAP["applications"]
+end if
+if OS::SCALABILITYCLASS == 2 | OS::SCALABILITYCLASS == 4 then
+  let APIUSED += APIMAP["globaltime"]
+end if
+
+# Multicore
+if OS::NUMBER_OF_CORES > 1 then
+  let APIUSED += APIMAP["multicore"]
+  warning here: "Adding multicore"
+
+  if [SPINLOCK length] > 0 then
+    let APIUSED += APIMAP["spinlock"]
+  end if
+
+end if
+
+# IOC
+if ioc_queued_count > 0 then
+  let APIUSED += APIMAP["ioc_queued"]
+end if
+if ioc_unqueued_count > 0 then
+  let APIUSED += APIMAP["ioc_unqueued"]
+end if
+
+if OS::SYSTEM_CALL then
+  !PROJECT %/tpl_dispatch_table.c
+%
+  write to PROJECT+"/tpl_dispatch_table.c":
+    template tpl_dispatch_table_c in code
+  end write
+  template tpl_invoque_s in code
+else
+  !PROJECT %/tpl_os.c
+%
+  write to PROJECT+"/tpl_os.c":
+    template tpl_os_c in code
+  end write
+end if
+
+!PROJECT %/tpl_os.h
+%
+write to PROJECT+"/tpl_os.h":
+  template tpl_os_h in code
+end write
+
+if OS::SYSTEM_CALL | OS::USEGETSERVICEID | exists COM::COMUSEGETSERVICEID default (false) then
+!PROJECT %/tpl_service_ids.h
+%
+write to PROJECT+"/tpl_service_ids.h":
+  template tpl_service_ids_h in code
+end write
+end if
+
+if OS::BUILD then
+  if OS::BUILD_S::SYSTEM == "MAKE" then
+%Makefile
+%
+    write to "Makefile":
+      template Makefile in build
+    end write
+  elsif OS::BUILD_S::SYSTEM == "PYTHON" then
+    write to executable "build.py":
+      template if exists build_py in build
+    end write
+    write to executable "make.py":
+      template if exists make_py in build
+    end write
+  elsif OS::BUILD_S::SYSTEM == "CMAKE" then
+    write to "CMakeLists.txt":
+      template if exists cmakelists_txt in build
+    end write
+    write to PROJECT+"/compiler.cmake":
+      template if exists compiler_cmake in build
+    end write
+    if exists OS::BUILD_S::SYSTEM_S then
+      if OS::BUILD_S::SYSTEM_S::VSCODE then
+        if not [".vscode/c_cpp_properties.json" fileExists] then
+          write to ".vscode/c_cpp_properties.json":
+            template if exists vscode_c_cpp_properties_json in build
+          end write
+        end if
+        if not [".vscode/launch.json" fileExists] then
+          write to ".vscode/launch.json":
+            template if exists vscode_launch_json in build
+          end write
+        end if
+        if not [".vscode/settings.json" fileExists] then
+          write to ".vscode/settings.json":
+            template if exists vscode_settings_json in build
+          end write
+        end if
+      end if 
+    end if 
+  end if
+end if
+

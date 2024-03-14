@@ -1,0 +1,71 @@
+/* Running the following example:
+ * just call goil a first time using the command line:
+ * goil --target=avr/arduino/uno --templates=../../../../goil/templates/ extInterrupt.oil
+ * you may have to update ARDUINO section (l.13) for your configuration.
+ *
+ */
+
+OIL_VERSION = "2.5" : "test" ;
+
+CPU test {    
+  OS config {
+    STATUS = STANDARD;
+    BUILD = TRUE {
+      TRAMPOLINE_BASE_PATH = "../../../..";
+      APP_NAME = "trampuinoIT";
+      APP_SRC = "extInterrupt.cpp";
+      CPPCOMPILER = "avr-g++";
+      COMPILER = "avr-gcc";
+      LINKER = "avr-gcc";
+      ASSEMBLER = "avr-gcc";
+      COPIER = "avr-objcopy";
+      SYSTEM = PYTHON;
+	
+      LIBRARY = serial;
+
+    };
+  };
+
+  APPMODE stdAppmode {};
+  
+  ALARM periodicAl {
+    COUNTER= SystemCounter;
+    ACTION = ACTIVATETASK {
+      TASK = periodicTask;
+    };
+    AUTOSTART = TRUE {
+      ALARMTIME = 1000;
+      CYCLETIME = 1000;
+      APPMODE = stdAppmode;
+    };
+  };
+
+  TASK periodicTask {
+    PRIORITY = 10;
+    AUTOSTART = FALSE;
+    ACTIVATION = 1;
+    SCHEDULE = FULL;
+    STACKSIZE = 256;
+  };
+
+
+  ISR ISRButtonSlow {
+    CATEGORY = 2;
+    PRIORITY = 20;
+    STACKSIZE = 256;
+    SOURCE = PIN2 {
+      MODE = RISING; //same mode as in attachInterrupt Arduino function.
+	  PULL = UP;
+    };
+  };
+
+  ISR ISRButtonFast {
+    CATEGORY = 2;
+    PRIORITY = 20;
+    STACKSIZE = 256;
+    SOURCE = PIN3 {
+      MODE = RISING; //same mode as in attachInterrupt Arduino function.
+      PULL = UP;
+    };
+  };
+};

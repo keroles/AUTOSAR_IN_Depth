@@ -1,0 +1,553 @@
+#---------------------------------------------------------------------------*
+#
+#  @file goil_syntax.galgas
+#
+#  @section desc File description
+#
+#  Syntax of OIL.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+syntax goil_syntax(goil_lexique){
+
+
+#--------------------------------------------------------------------
+# extern nonterminals
+#--------------------------------------------------------------------
+rule <implementation_definition> ?!@implementation imp
+
+#
+# root
+#
+rule <start> {
+  @implementation imp  = @implementation. new { !@implementationMap. emptyMap}
+  @applicationDefinition application = emptyApplicationDefinition()
+
+  @string fileIncludeList = ""
+    
+  # First the OIL_VERSION must be present
+  let @lstring version
+  let @lstring desc
+  <OIL_version> ?version ?desc
+  [!?application setVersion !version] 
+  [!?application setVersionDescription !desc] 
+
+  let @string config_file_name = [option goil_options.config value]
+
+  #
+  # includes the config files
+  #
+  let @stringlist configFiles = allTemplateFilePaths(!"config" !config_file_name+".oil")
+
+  #
+  # files are stored from the deepest to the shallowest and we should go from
+  # the shallowest to the deepest.
+  #
+  for > (@string file) in  configFiles do
+    grammar goil_file_level_include in lstringWith(!file) !?imp !?application !?fileIncludeList !false
+  end
+
+  #
+  # then look for config files suffixed by the OIL version
+  # But first check the version correspond to at leat one config
+  # file by checking the list is not empty. If the list is empty
+  # an error is generated
+  #
+  let @stringlist configVersionFiles = allTemplateFilePaths(
+    !"config" 
+    !config_file_name+version+".oil"
+  )
+  if [configVersionFiles length] == 0 then
+    error .here : "OIL version " + version + " does not exist"
+  end
+
+  for > (@string file) in  configVersionFiles do
+    grammar goil_file_level_include in lstringWith(!file) !?imp !?application !?fileIncludeList !false
+  end
+  
+  <file> !?imp !?application !?fileIncludeList !true
+
+  # semantics constraint checking
+  # per object static verification
+  #checkImplementation !imp;
+  
+#  log imp;
+
+  [imp checkObjectReferences]
+  
+  if @uint. errorCount == 0 then
+    setDefaults ( !imp !?application)
+  end
+
+#  log application
+  
+#  log imp;
+#  log application;
+  if @uint. errorCount == 0 then
+    verifyAll ( !imp !application)
+  end
+  if @uint. errorCount == 0 then
+    let @gtlData templateData = [application templateData !imp]
+#    addStringValue !?templateData !lstringWith[!"PROJECT"] ![projectName[] lastPathComponent];
+
+    generate_all ( !templateData)
+  end
+  
+  fileIncludeList = [@string.stringWithSourceFilePath lastPathComponent] + ":" + fileIncludeList + "\n"
+  let @string oilDepFileName = [@string.stringWithSourceFilePath stringByDeletingLastPathComponent]
+    + "/build/" + [@string.stringWithSourceFilePath lastPathComponent] + ".dep"  
+  #message "Writing dependancies to " + oilDepFileName + "\n";
+  [fileIncludeList writeToFile !oilDepFileName]
+}
+
+rule <file>
+  ?!@implementation        imp
+  ?!@applicationDefinition application
+  ?!@string fileIncludeList
+  ?let @bool rootFile
+{
+  if not rootFile then
+    fileIncludeList += " \\\n " + @string.stringWithSourceFilePath
+  end
+  repeat
+  while <include_file_level> !?imp !?application !?fileIncludeList !false
+  while <implementation_definition> !?imp 
+  while <application_definition> !imp !?application !?fileIncludeList !false
+  end
+}
+
+rule <file_without_include>
+  ?!@implementation        imp
+  ?!@applicationDefinition application
+{
+  @string includeList = ""
+  repeat
+  while <implementation_definition> !?imp 
+  while <application_definition> !imp !?application !?includeList !false
+  end
+}
+
+rule <sign> !@bool signed {
+  select
+    $-$ ; signed = true
+  or
+    $+$ ; signed = false
+  or
+    signed = false
+  end
+}
+
+#
+# Description of an OIL declaration
+#
+rule <description> !@lstring desc {
+  select
+    desc = lstringWith(!"")
+  or
+    $:$
+    @lstring partialString
+    $string$ ?partialString
+    @string result = [partialString string]
+    repeat
+    while
+      $string$ ?partialString
+      @string toappend = [partialString string]
+      if [result rightSubString !2] != "\\n" then
+        toappend = " " + toappend
+      end 
+      result += toappend
+    end
+    desc = @lstring. new { ![result stringByReplacingStringByString !"\\n" !"\n"] ![partialString location]}
+  end
+}
+
+#
+# OIL version appears at the beginning of OIL files
+#
+rule <OIL_version> !@lstring version !@lstring desc {
+  $OIL_VERSION$ ; $=$ ; $string$ ?version ; <description> ?desc ; $;$
+}
+
+#--------------------------------------------------------------------
+# Application definition part
+#--------------------------------------------------------------------
+rule <application_definition>
+  ?let @implementation imp
+  ?!@applicationDefinition application
+  ?!@string fileIncludeList
+  ?let @bool rootFile
+{
+  $CPU$ ; $idf$ ?let @lstring cpuName ; ${$
+  @objectsMap objects = [application objects]
+  <object_definition_list> !imp !?objects !?fileIncludeList !rootFile
+  $}$ ; <description> ?* ; $;$
+  [!?application setName !cpuName]
+  [!?application setObjects !objects]
+}
+
+rule <object_definition_list>
+  ?let @implementation imp
+  ?!@objectsMap objects
+  ?!@string fileIncludeList
+  ?let @bool rootFile
+{
+  repeat
+  while
+    $idf$ ?let @lstring objectKind
+    let @implementationObject impObjOfKind = [imp impObject ![objectKind string]]   
+    @objectKind objectsForKind = @objectKind. new { !@objectKindMap. emptyMap}
+    if [objects hasKey ![objectKind string]] then
+      [!?objects del !objectKind ?objectsForKind]
+    end
+    $idf$ ?var @lstring objectName
+    @objectAttributes object = emptyObject()
+    @objectKindMap objectsKind = [objectsForKind objects]
+    if [[impObjOfKind multiple] bool] == false then
+      # The object cannot be instanciated multiple time, it's stored in the
+      # object list not with its name as a key but its kind, thus we'll always
+      # modify this uniq object each time we encounter it.
+      objectName = objectKind
+    end
+    if [objectsKind hasKey ![objectName string]] then
+      [!?objectsKind del !objectName ?object]
+    end
+    ${$
+    <oil_declaration_list> ![impObjOfKind attributes] !?object
+    $}$
+    <description> ?let @lstring oil_desc
+    $;$
+    @identifierMap attributes = [object objectParams]
+    if not [attributes hasKey !"NAME"] then
+      [!?attributes put !@lstring.new{!"NAME"
+                                      ![objectName location]}
+                        !@stringAttribute.new{!oil_desc
+                                              ![objectName location]
+                                              ![objectName string]}]
+      [!?object setObjectParams !attributes]
+    end
+    [!?objectsKind put !objectName !object]
+    [!?objectsForKind setObjects !objectsKind]
+    [!?objects put !objectKind !objectsForKind]
+  while <include_cpu_level> !imp !?objects !?fileIncludeList !rootFile
+  end
+}
+
+#--------------------------------------------------------------------
+# Miscellaneous non terminals
+#--------------------------------------------------------------------
+rule <boolean> !@lbool val {
+  select
+    $TRUE$
+    val = @lbool. new { !true !@location.here}
+  or
+    $FALSE$
+    val = @lbool. new { !false !@location.here}
+  end
+}
+
+rule <oil_declaration_list>
+  ?let @implementationObjectMap types
+  ?!@objectAttributes identifiers
+{
+  repeat
+  while
+    <oil_declaration> !types !?identifiers
+  while
+    <include_object_level> !types !?identifiers
+  end
+}
+
+rule <oil_declaration>
+  ?let @implementationObjectMap types
+  ?!@objectAttributes identifiers {
+  let @lstring idf
+  @object_t val
+  $idf$ ?idf
+  #
+  # Get the type if the identifier
+  #
+  @impType type = @impVoid. new { !{!@location.here } !@dataType. void !emptyLString() !false !{} }
+  @bool typeOk = false
+  if [types hasKey ![idf string]] then
+    [types get !idf ?type]
+    typeOk = true
+  else
+    error idf: [idf string]+" is not declared in the IMPLEMENTATION"
+  end
+  select
+    $=$
+    select
+      # Type is identifier, enum, struct or object reference
+      let @lstring value
+      $idf$ ?value
+      var subTypes = @implementationObjectMap.emptyMap {}
+      @objectAttributes subAttributes = emptyObject()    
+      switch [type type]
+      case enumeration:
+        cast type
+        case == @impEnumType enumType :
+          if [[enumType valuesMap] hasKey ![value string]] then
+            [[enumType valuesMap] get !value ?subTypes]
+          else
+            error value: [value string]+" ENUM value undeclared. One of the following values are expected: "+valueList(![enumType valuesMap])
+          end
+        else end
+      case identifier:
+      case objectType:
+      case void, uint32Number, sint32Number, uint64Number, sint64Number, floatNumber, string, structType, boolean:
+        error idf: [idf string]+" is not an ENUM nor and IDENTIFIER nor an object reference"
+      end
+      select
+        ${$
+        <oil_declaration_list> !subTypes !?subAttributes
+        $}$
+      or end
+      <description> ?let @lstring oil_desc
+      if [type type] == @dataType.enumeration then
+        val = @enumAttribute.new { !oil_desc ![value location] ![value string] !subAttributes}
+      elsif [type type] == @dataType.objectType then
+        val = @objectRefAttribute.new {!oil_desc ![value location] !value}
+      else
+        val = @string_class.new {  !oil_desc ![value location] ![value string]}
+      end
+    or
+      # Type is int of float
+      let @bool sign
+      <sign> ?sign
+      select 
+        # Type is int
+        let @luint64 value
+        $uint_number$ ?value
+        <description> ?let @lstring oil_desc
+        val = checkAndGetIntegerNumber(!oil_desc ![type type] !value !sign)
+        cast type
+        case == @impRangedType rangedType:
+          if not [[rangedType setOrRange] contains !val] then
+            error value: "Integer out or range. Allowed values are: " + [[rangedType setOrRange] string]
+          end
+        else end
+      or
+        # Type is float
+        let @ldouble value
+        $float_number$ ?value
+        <description> ?let @lstring oil_desc
+        val = checkAndGetFloatNumber(!oil_desc ![type type] !value !sign)
+        cast type
+        case == @impRangedType rangedType:
+          if not [[rangedType setOrRange] contains !val] then
+            error value: "Float out or range. Allowed values are: " + [[rangedType setOrRange] string]
+          end
+        else end
+      end
+    or
+      # Type is bool
+      let @lbool value
+      <boolean> ?value
+      var subTypes =@implementationObjectMap.emptyMap{}
+      @objectAttributes subAttributes = emptyObject()    
+      if [type type] != @dataType. boolean then
+        error idf: [[type type] oilType]+" expected, got a BOOLEAN"
+      else
+        cast type
+        case == @impBoolType boolType :
+          if [value bool] then
+            subTypes = [boolType trueSubAttributes]
+          else
+            subTypes = [boolType falseSubAttributes]
+          end
+        else end      
+      end
+      select
+        ${$
+        if [subTypes count] == 0 then
+          error value: stringLBool(!value) + " value of " + [idf string]+ " has no sub-attribute"
+        end
+        <oil_declaration_list> !subTypes !?subAttributes
+        $}$
+      or end
+      <description> ?let @lstring oil_desc
+      val = @boolAttribute. new { !oil_desc ![idf location] ![value bool] !subAttributes}
+    or
+      # Type is string
+      let @lstring literalString
+      $string$ ?literalString
+      <description> ?let @lstring oil_desc
+      val = @stringAttribute. new { !oil_desc ![literalString location] ![literalString string]}
+    or
+      # AUTO
+      $AUTO$
+      <description> ?let @lstring oil_desc
+      # Check the attribute is allowed to have AUTO value
+      if [type autoAllowed] then
+          val = @auto. new { !oil_desc !@location.here}
+  #      message "*** AUTO\n";
+#        switch [type type]
+#        when uint32Number: 
+#          val := [@auto_uint32_class new !here !0];
+#        when uint64Number:
+#          val := [@auto_uint64_class new !here !0L];
+#        when floatNumber:
+#          val := [@auto_float_class new !here !0.0];
+#        when string:
+#          val := [@auto_string_class new !here !""];
+#        when enumeration, sint32Number, sint64Number, boolean, identifier, objectType, structType, void:
+#          error here: "type unsupported in AUTO": val;
+#        end switch;
+      else
+        error @location.here : "AUTO is not allowed": val
+      end
+    end
+  or
+    $idf$ ?let @lstring name
+    var subTypes =@implementationObjectMap.emptyMap{}
+    @objectAttributes subAttributes = emptyObject()    
+    # STRUCT
+    if [type type] != @dataType. structType then
+      error idf: [[type type] oilType]+" expected, got a STRUCT"
+    else
+      cast type
+      case == @impStructType structType :
+        subTypes = [structType structAttributes]
+      else end      
+    end
+    ${$
+      <oil_declaration_list> !subTypes !?subAttributes
+    $}$
+    <description> ?let @lstring oil_desc
+    val = @structAttribute. new { !oil_desc !@location.here !name !subAttributes}
+  end
+  $;$
+#    log idf;
+#    log val;
+  @identifierMap idfs= [identifiers objectParams]
+  if [type multiple] then
+    if [idfs hasKey ![idf string]] then
+      let @object_t attributeList
+      # the multiple identifier has been already encountered
+      # get the list
+      [!?idfs del !idf ?attributeList]
+      cast attributeList
+      case == @multipleAttribute multiAttribute :
+        @identifierList aList = [multiAttribute items]
+        aList += !val
+        val = @multipleAttribute. new { !emptyLString() ![multiAttribute location] !aList}
+      else end
+    else
+      @identifierList aList = .emptyList
+      # Get the type's default value
+      let @object_t defaultValue = [type getDefaultValue]
+
+      # If it's a list, get it
+      cast defaultValue
+      case == @multipleAttribute multiAttribute :
+        aList = [multiAttribute items]
+      else end
+
+      # The created list either contains the default list + current value, or
+      # the current value only (if there is no default list)
+      aList += !val
+
+      val = @multipleAttribute. new { !emptyLString() ![val location] !aList}
+    end
+  else
+    if [idfs hasKey ![idf string]] then
+      # The key already exists, we must merge the existing identifier with the
+      # new one
+      let @object_t existingObject
+      [!?idfs del !idf ?existingObject]
+      [!?val mergeSubAttributes !existingObject]
+    end
+  end
+  if typeOk then
+    [!?idfs put !idf !val]
+  end
+  [!?identifiers setObjectParams !idfs]
+}
+
+rule <include_file_level>
+  ?!@implementation        imp
+  ?!@applicationDefinition application
+  ?!@string fileIncludeList
+  ?let @bool rootFile
+{
+  @bool includeIfExists = false
+  select
+    $include$
+  or
+    $includeifexists$ ; includeIfExists = true
+  end
+  @lstring file_name
+  select
+    $g_string$ ?file_name
+    file_in_path ( !?file_name)
+  or
+    $string$ ?file_name
+  end
+  if not includeIfExists || (includeIfExists && [file_name fileExists]) then
+    grammar goil_file_level_include in file_name !?imp !?application !?fileIncludeList !rootFile
+  end  
+}
+
+rule <include_cpu_level>
+  ?let @implementation imp
+  ?!@objectsMap objects
+  ?!@string fileIncludeList
+  ?let @bool rootFile
+{
+  @bool includeIfExists = false
+  select
+    $include$
+  or
+    $includeifexists$ ; includeIfExists = true
+  end
+  @lstring file_name
+  select
+    $g_string$ ?file_name
+    file_in_path ( !?file_name)
+  or
+    $string$ ?file_name
+  end
+  if not includeIfExists || (includeIfExists && [file_name fileExists]) then
+    grammar goil_cpu_level_include in file_name !imp !?objects !?fileIncludeList !rootFile
+  end  
+}
+
+rule <include_object_level>
+  ?let @implementationObjectMap types
+  ?!@objectAttributes identifiers
+{
+  @bool includeIfExists = false
+  select
+    $include$
+  or
+    $includeifexists$ ; includeIfExists = true
+  end
+  @lstring file_name
+  select
+    $g_string$ ?file_name
+    file_in_path ( !?file_name)
+  or
+    $string$ ?file_name
+  end
+  if not includeIfExists || (includeIfExists && [file_name fileExists]) then
+    grammar goil_object_level_include in file_name !types !?identifiers
+  end  
+}
+
+}

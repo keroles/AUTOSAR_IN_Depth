@@ -1,0 +1,33 @@
+/*
+ * % !filter::KIND % filter kind struct declaration for type % !filter::CDATATYPE %
+ */
+%
+if filter::KIND == "mask" then%
+typedef struct {
+  /*  base filter desc                */
+  tpl_filter_desc b_desc ;
+  /*  mask                            */
+  const % !filter::CDATATYPE % mask;
+} tpl_% !filter::KIND %_filter_% ![filter::CDATATYPE identifierRepresentation] %_desc;
+%
+elsif filter::KIND == "mask_x" then%
+typedef struct {
+  /*  base filter desc                */
+  tpl_filter_desc     b_desc ;
+  /*  mask                            */
+  const % !filter::CDATATYPE % mask;
+  /*  comparison value                */
+  const % !filter::CDATATYPE % x;
+} tpl_% !filter::KIND %_filter_% ![filter::CDATATYPE identifierRepresentation] %_desc;
+%
+elsif filter::KIND == "interval" then %
+typedef struct {
+  /*  base filter desc                */
+  tpl_filter_desc     b_desc ;
+  /*  minimum value of the interval   */
+  const % !filter::CDATATYPE % min;
+  /*  maximum value of the interval   */
+  const % !filter::CDATATYPE % max;
+} tpl_% !filter::KIND %_filter_% ![filter::CDATATYPE identifierRepresentation] %_desc;
+%
+end if

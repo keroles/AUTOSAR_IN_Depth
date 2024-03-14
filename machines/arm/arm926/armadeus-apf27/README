@@ -1,0 +1,15 @@
+This port is currently not working with the trunk version of trampoline. Please wait while we are importing previous work with an old version of trampoline.
+
+Roadmap :
+- bootstraping      : done
+- context switching : done
+- interrupt support : done, needs improvements, especially about acknoledge
+- memmap support    : done
+- memory protection : done
+- trusted functions : done
+- trusted OS Applications support : done
+- counters support  : to be done
+- connect GPT to counters : to be done
+
+To be fixed :
+- if TaskType is greater than 8 bits, we must use another LOAD or STORE instruction. Make a goil template to provide the correct instruction via a MACRO

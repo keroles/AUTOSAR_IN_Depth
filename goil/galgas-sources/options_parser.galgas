@@ -1,0 +1,109 @@
+#---------------------------------------------------------------------------*
+#
+#  @file options_parser.galgas
+#
+#  @section desc File description
+#
+#  Options passed on command line to templates parser.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+syntax options_parser(options_scanner) {
+
+rule <option_parser_start>
+  !@gtlData options
+{
+  options = @gtlStruct.new { !.here !lstring(!"Passed options") !.emptyMap }
+  repeat
+    <option_item> !?options
+  while $,$
+  end
+}
+
+rule <option_item>
+  ?!@gtlData options
+{
+  $idf$ ?let @lstring key
+  $=$
+  let @gtlData opt
+  select
+    <option_value> ?opt
+  or
+    <list_option_value> ?opt
+  end
+  [!?options setStructField !key !opt] 
+}
+
+rule <option_value>
+  !@gtlData opt
+{
+  $string$ ?let @lstring str
+  opt = @gtlString.new { !str !emptylstring() !str }
+}
+
+rule <option_value>
+  !@gtlData opt
+{
+  $idf$ ?let @lstring str
+  opt = @gtlString.new { !str !emptylstring() !str }
+}
+
+rule <option_value>
+  !@gtlData opt
+{
+  $uint_number$ ?let @luint64 num
+  opt = @gtlInt.new { !num !emptylstring() ![num bigint] }
+}
+
+rule <option_value>
+  !@gtlData opt
+{
+  $float_number$ ?let @ldouble num
+  opt = @gtlFloat.new { !num !emptylstring() !num }
+}
+
+rule <option_value>
+  !@gtlData opt
+{
+  $-$
+  select
+    $uint_number$ ?let @luint64 num
+    opt = @gtlInt.new { !num !emptylstring() !-[num bigint] }
+  or
+    $float_number$ ?let @ldouble num
+    opt = @gtlFloat.new { !num !emptylstring() !-[num double] }
+  end
+}
+
+rule <list_option_value>
+  !@gtlData opt
+{
+  @list listOption = .emptyList
+  $($
+  repeat
+    <option_value> ?let @gtlData item
+    listOption += !item
+  while $,$
+  end
+  opt = @gtlList.new { !.here !emptylstring() !listOption }
+  $)$
+}
+
+
+}

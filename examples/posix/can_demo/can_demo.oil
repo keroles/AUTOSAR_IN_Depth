@@ -1,0 +1,28 @@
+OIL_VERSION = "4.0";
+
+CPU can_task {
+	OS config {
+		STATUS = EXTENDED;
+		BUILD = TRUE {
+			APP_SRC = "can_demo.c";
+			TRAMPOLINE_BASE_PATH = "../../..";
+			CFLAGS = "-W -Wall";
+			APP_NAME = "can_demo_exe";
+			LINKER = "gcc";
+			CFLAGS = "-W -Wall";
+			SYSTEM = PYTHON;
+			LIBRARY = can;
+		};
+	};
+  
+	APPMODE stdAppmode {};
+
+	TASK can_task {
+		PRIORITY = 1;
+		AUTOSTART = TRUE {
+			APPMODE = stdAppmode;
+		};
+		ACTIVATION = 1;
+		SCHEDULE = FULL;
+	};
+};

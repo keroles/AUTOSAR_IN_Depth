@@ -1,0 +1,36 @@
+CPU avrArduino {
+
+  PLATFORM_FILES arduinoMega {
+    PATH = "avr/arduino/variants/mega";
+  };
+  
+  BUILDOPTIONS buildOptionsForArduino {
+    COMMONFLAGS = "-Os -Wall -DF_CPU=16000000 -mmcu=atmega2560"; //CFLAGS + CPPFLAGS
+    ASFLAGS = "-DF_CPU=16000000 -mmcu=atmega2560";
+    LDFLAGS = "-DF_CPU=16000000 -mmcu=atmega2560";
+  };
+
+};
+
+CPU arduino {
+
+  POSTBUILD all {
+    COMMAND buildbin {
+      TYPE = COPIER;
+      INPUT = TARGET;
+      OUTPUT = ".hex";
+      PREOPTION = "-O ihex";
+    };
+  };
+
+  POSTCOMMAND flash {
+    COMMAND flash {
+      MESSAGE = "Flashing";
+      COMMAND = "avrdude";
+      INPUT = TARGET { EXT = ".hex"; };
+      PREOPTION = "-c wiring -p m2560";
+      PREOPT = ENVAR { NAME = "AVRDUDE_PORT"; OPT = "-P"; };
+      PREOPT = LITERAL { VALUE = "flash:w:"; OPT = "-U"; };
+    };
+  };
+}; 

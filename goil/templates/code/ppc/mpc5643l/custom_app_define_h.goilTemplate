@@ -1,0 +1,120 @@
+%
+#------------------------------------------------------------------------------*
+# build an empty list when the list does not exist. This simplify
+# further processing because existence test is not necessary
+
+let INTERCORE_INTERRUPT := exists INTERCORE_INTERRUPT default (@( ))
+
+%
+/*=============================================================================
+ * Target specific definitions
+ */
+%
+let channel_map := @( )
+let channel_map["pit_ch0"] := "TPL_PIT_0"
+let channel_map["pit_ch1"] := "TPL_PIT_1"
+let channel_map["pit_ch2"] := "TPL_PIT_2"
+let channel_map["pit_ch3"] := "TPL_PIT_3"
+let channel_map["decrementer"] := "TPL_DECREMENTER"
+
+let used_counters := @( )
+foreach counter in HARDWARECOUNTERS do
+  let used_counters[counter::SOURCE] := counter
+end foreach
+
+let number_of_pit_used := 0
+foreach counter in used_counters do
+  if counter::SOURCE == "pit_ch0"
+    | counter::SOURCE == "pit_ch1"
+    | counter::SOURCE == "pit_ch2"
+    | counter::SOURCE == "pit_ch3" then
+    let number_of_pit_used := number_of_pit_used + 1
+  end if
+end foreach
+
+%
+/*-----------------------------------------------------------------------------
+ *  Timer channel possible values
+ */
+#define TPL_PIT_0       0
+#define TPL_PIT_1       1
+#define TPL_PIT_2       2
+#define TPL_PIT_3       3
+#define TPL_DECREMENTER 4
+#define TPL_NO_TIMER    5
+
+/*-----------------------------------------------------------------------------
+ * PIT Configuration
+ */
+#define TPL_USE_PIT             % !yesNo(number_of_pit_used > 0) %
+
+/*-----------------------------------------------------------------------------
+ * Decrementer Configuration
+ */
+#define TPL_USE_DECREMENTER     % !yesNo(exists used_counters["decrementer"]) %
+
+/*-----------------------------------------------------------------------------
+ * Enable multicore
+ */
+#define WITH_MULTICORE     % !yesNo(OS::NUMBER_OF_CORES > 1) %
+
+/*-----------------------------------------------------------------------------
+ * Use VLE Assembly
+ */
+
+/* TODO : Use Vle
+ *          VLE's source code must be separated in another directory.
+ *          The chosen code must then be picked from the right directory
+ *          following this flag state.
+ */
+#define WITH_VLE       % !yesNo(OS::USEVLE) %
+
+/*-----------------------------------------------------------------------------
+ *
+ */
+#if WITH_DEBUG == YES
+# define DEBUG_OS_MCU_IN_SUPERVISOR_MODE
+#endif
+
+/*-----------------------------------------------------------------------------
+ * Use FLOAT instructions
+ */%
+let use_float := false
+foreach isr in ISRS do
+  if isr::USEFLOAT then
+    let use_float := true
+  end if
+end foreach
+
+foreach task in TASKS do
+  if task::USEFLOAT then
+    let use_float := true
+  end if
+end foreach
+%
+#define WITH_FLOAT     % !yesNo(use_float) %
+
+/*-----------------------------------------------------------------------------
+ * Intercore interrupt sources
+ */
+%
+let irqs := mapof INTERRUPT by NAME
+
+loop core_id from 0 to OS::NUMBER_OF_CORES - 1 do
+  let it_list := @( )
+
+  # Get a list of intercore_interrupt for each core
+  foreach it in INTERCORE_INTERRUPT do
+    if core_id == it::CORE then
+      let it_list += it
+    end if
+  end foreach
+
+  foreach it in it_list do
+%#define TPL_INTERCORE_IT_CORE% !core_id %_% !INDEX %   % !irqs[it::SOURCE]::ID%
+%
+  end foreach
+
+end loop
+
+%

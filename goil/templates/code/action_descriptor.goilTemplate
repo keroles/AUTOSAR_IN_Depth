@@ -1,0 +1,136 @@
+%
+if action == "ACTIVATETASK" then
+%
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_task_activation_action, OS_CONST) % !action_name %_action = {
+  {
+    /* action function  */  tpl_action_activate_task
+  },
+  /* task id            */  % !action_s::TASK %_id
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "SETEVENT" then
+%
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_setevent_action, OS_CONST) % !action_name %_action = {
+  {
+    /* action function  */    tpl_action_setevent
+  },
+  /* task id              */  % !action_s::TASK %_id,
+  /* event mask           */  % !action_s::EVENT %_mask
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "ALARMCALLBACK" then
+%
+#define OS_START_SEC_CODE
+#include "tpl_memmap.h"
+
+FUNC(void, OS_APPL_CODE) % !action_s::ALARMCALLBACKNAME %_callback(void);
+
+#define OS_STOP_SEC_CODE
+#include "tpl_memmap.h"
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_callback_action, OS_CONST) % !action_name %_action = {
+  {
+    /* action function  */    tpl_action_callback
+  },
+  /* callback function    */  % !action_s::ALARMCALLBACKNAME %_callback
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "COMCALLBACK" then
+%
+#define OS_START_SEC_CODE
+#include "tpl_memmap.h"
+
+FUNC(void, OS_APPL_CODE) % !action_s::CALLBACKROUTINENAME %_callback(void);
+
+#define OS_STOP_SEC_CODE
+#include "tpl_memmap.h"
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_callback_action, OS_CONST) % !action_name %_action = {
+  {
+    /* action function  */    tpl_action_callback
+  },
+  /* callback function    */  % !action_s::CALLBACKROUTINENAME %_callback
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "FLAG" then
+%
+#define OS_START_SEC_CODE
+#include "tpl_memmap.h"
+
+FUNC(void, OS_APPL_CODE) % !action_s::FLAGNAME %_set(void)
+{
+}
+
+#define OS_STOP_SEC_CODE
+#include "tpl_memmap.h"
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_callback_action, OS_CONST) % !action_name %_action = {
+  {
+    /* action function  */    tpl_action_setflag
+  },
+  /* callback function    */  % !action_s::FLAGNAME %_set
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "INCREMENTCOUNTER" then
+%
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+CONST(tpl_increment_counter_action, OS_CONST) % !action_name %_action = {
+  {
+  /* action function      */      tpl_action_increment_counter
+  },
+  /* counter descriptor ptr   */  &% !action_s::COUNTER %_counter_desc
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+elsif action == "FINALIZESCHEDULETABLE" then
+%
+tpl_schedule_table % !action_s::SCHEDULETABLE %_st_dyn;
+
+#define OS_START_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+
+tpl_finalize_schedule_table_action % !action_name %_action = {
+  {
+    /*  notification function */  tpl_action_finalize_schedule_table
+  },
+  /*  Schedule table descriptor pointer */  &% !action_s::SCHEDULETABLE %_st_dyn
+};
+
+#define OS_STOP_SEC_CONST_UNSPECIFIED
+#include "tpl_memmap.h"
+%
+end if

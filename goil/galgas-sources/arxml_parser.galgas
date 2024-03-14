@@ -1,0 +1,1966 @@
+#---------------------------------------------------------------------------*
+#
+#  @file arxml_parser.galgas
+#
+#  @section desc File description
+#
+#  Parser for arxml.
+#
+#  @section copyright Copyright
+#
+#  Goil OIL compiler, part of Trampoline RTOS
+#
+#  Trampoline is copyright (c) CNRS, University of Nantes,
+#  Ecole Centrale de Nantes
+#  Trampoline is protected by the French intellectual property law.
+#
+#  This software is distributed under the GNU Public Licence V2.
+#  Check the LICENSE file in the root directory of Trampoline
+#
+#  $Date$
+#  $Rev$
+#  $Author$
+#  $URL$
+#
+#---------------------------------------------------------------------------*
+
+syntax arxml_parser (arxml_scanner) {
+
+#----------------------------------------------------------------------------*
+
+rule <arxml_start_symbol>
+  !@arxmlNode     rootNode
+  ?let @bool      includeComments
+  ?let @bool      doNotCondenseWhiteSpaces
+{
+  @implementation imp  = @implementation. new { !@implementationMap. emptyMap}
+  @applicationDefinition application = emptyApplicationDefinition()
+  @string fileIncludeList = ""
+  let @bool debug = false
+
+###############################################################################
+# Parse the arxml file
+#
+  let @string s = .retrieveAndResetTemplateString
+  if [s length] > 0 then
+    error .here : "No character is allowed before XML header"
+  end
+#--- XML header
+  $<?$
+  $name$ ?let @lstring name
+
+  @arxmlAttributeMap attributes = .emptyMap
+  repeat
+  while
+    $name$ ?let @lstring attributeName
+    $=$
+    $value$ ?let @lstring attributeValue
+    [!?attributes insertKey !attributeName !attributeValue]
+  end
+  $?>$
+#--- Element list
+  @arxmlNodeList nodes = .emptyList
+  <element_list>
+    !?nodes
+    !includeComments
+    !doNotCondenseWhiteSpaces
+
+  rootNode = @arxmlElementNode.new {
+    !name
+    !attributes
+    !nodes
+  }
+
+  #log rootNode
+
+###############################################################################
+# Get the AUTOSAR Version
+#
+  let @lstring autosarVersion
+  let @lstring autosarDescription
+  getAutosarVersion(!rootNode ?autosarVersion ?autosarDescription)
+
+  if autosarVersion.string == "" then
+    error .here : "[TPS_ECUC_06005][TPS_ECUC_08053] : Missing AUTOSAR version"
+  end
+
+  # Only use the two major numbers of the version for the application
+  @stringlist autosarVlist = [autosarVersion componentsSeparatedByString !"."]
+  [!?autosarVlist popFirst ?let @string versionFirst]
+  [!?autosarVlist popFirst ?let @string versionSecond]
+  let @lstring autosarShortVersion = .new{!versionFirst + "." + versionSecond
+                                      ![autosarVersion location]}
+  displayOil(!"\nOIL_VERSION = \"" + autosarShortVersion + "\";\n\n")
+
+  [!?application setVersion !autosarShortVersion]
+  [!?application setVersionDescription !autosarDescription]
+
+  #log autosarVersion
+  #log autosarDescription
+
+###############################################################################
+# Parse the corresponding AUTOSAR meta-data file
+#
+  let @string autosarVersionNoDot = [autosarVersion
+                                stringByReplacingStringByString
+                                !"." !"-"]
+  let @string autosarMetaFile = "AUTOSAR_" + autosarVersionNoDot + ".xsd"
+  let @string filePath = templates_directory(!"arxmlMeta") + autosarMetaFile
+  @arxmlMetaClassMap classMap
+
+  if not [filePath fileExists] then
+    error .here : "The corresponding metafile " + filePath + " does not"
+      + " exists. The Metamodel can be found here : "
+      + "http://www.autosar.org/specification -> Methodology and Templates -> "
+      + "Templates -> AUTOSAR_MMOD_XMLSchema.zip."
+  end
+
+  grammar arxmlmetaparser_grammar in lstringWith(!filePath) ?classMap !debug
+
+###############################################################################
+# Fill the internal classes and check the arxml coherence with the meta-file
+#
+  let @arxmlElementValue rootValue
+  nodeToClass(!rootNode !?classMap ?rootValue)
+
+  # log rootValue
+
+###############################################################################
+# Arxml implementation definition
+#
+# NOTE : We can parse the file AUTOSAR_MOD_ECUConfigurationParameters.arxml
+# (can be found in + "http://www.autosar.org/specification -> Methodology and
+# Templates -> " + "Templates") to get AUTOSAR's implementation definition.
+# Currently we're using the OIL configuration files to get the Implementation.
+
+  includeConfigs(!?imp !?application !?fileIncludeList !autosarShortVersion)
+
+  # log imp
+
+###############################################################################
+# Fill the implementation structure (Arxml -> Oil here)
+#
+  convertToOil(!?imp !?application !rootValue)
+
+###############################################################################
+# Checkings & Generations
+#
+    # semantics constraint checking
+    # per object static verification
+  #  checkImplementation !imp;
+
+  #  log imp
+
+    [imp checkObjectReferences]
+
+    if @uint. errorCount == 0 then
+      setDefaults ( !imp !?application)
+    end
+
+  #  log application
+  #  log imp;
+  #  log application;
+
+    if @uint. errorCount == 0 then
+      verifyAll ( !imp !application)
+    end
+    if @uint. errorCount == 0 then
+      let @gtlData templateData = [application templateData !imp]
+  #    addStringValue !?templateData !lstringWith[!"PROJECT"] ![projectName[] lastPathComponent];
+
+      generate_all ( !templateData)
+    end
+
+    fileIncludeList = [@string.stringWithSourceFilePath lastPathComponent] + ":" + fileIncludeList + "\n"
+    let @string oilDepFileName = [@string.stringWithSourceFilePath stringByDeletingLastPathComponent]
+      + "/build/" + [@string.stringWithSourceFilePath lastPathComponent] + ".dep"  
+    #message "Writing dependancies to " + oilDepFileName + "\n";
+    [fileIncludeList writeToFile !oilDepFileName]
+    #message fileIncludeList
+
+}
+
+#----------------------------------------------------------------------------*
+
+rule <element_list>
+  ?!@arxmlNodeList nodes
+  ?let @bool       includeComments
+  ?let @bool       doNotCondenseWhiteSpaces
+{
+  repeat
+  while
+
+    addText ( !?nodes !doNotCondenseWhiteSpaces )
+
+    <element>
+      !?nodes
+      !includeComments
+      !doNotCondenseWhiteSpaces
+
+  end
+}
+
+#----------------------------------------------------------------------------*
+
+rule <element>
+  ?!@arxmlNodeList  nodes
+  ?let @bool        includeComments
+  ?let @bool unused doNotCondenseWhiteSpaces
+{
+  $comment$ ?let @lstring commentString
+  if includeComments then
+    nodes += !@arxmlCommentNode.new { !commentString }
+  end
+}
+
+#----------------------------------------------------------------------------*
+
+rule <element>
+  ?!@arxmlNodeList nodes
+  ?let @bool       includeComments
+  ?let @bool       doNotCondenseWhiteSpaces
+{
+  $<$
+  $name$ ?let @lstring name
+  @arxmlAttributeMap attributeMap = .emptyMap
+  repeat
+  while
+    $name$ ?let @lstring attributeName
+    $=$
+    $value$ ?let @lstring attributeValue
+    [!?attributeMap insertKey !attributeName !attributeValue]
+  end
+
+  @arxmlNodeList nodeList  = .emptyList
+  select
+    $/>$
+  or
+    $>$
+    <element_list>
+      !?nodeList
+      !includeComments
+      !doNotCondenseWhiteSpaces
+
+    addText ( !?nodeList !doNotCondenseWhiteSpaces )
+
+    $</$ ;
+    $name$ ?let @lstring closingName
+    if [closingName string] != [name string] then
+      error closingName : "incorrect closing tag </"
+                          + closingName + "> instead of </" + name + ">"
+    end
+    $>$
+  end
+
+  nodes += !@arxmlElementNode.new {
+    !name
+    !attributeMap
+    !nodeList
+  }
+}
+
+#----------------------------------------------------------------------------*
+
+}
+
+#----------------------------------------------------------------------------*
+
+proc getAutosarVersion
+  ?@arxmlNode     rootNode
+  !@lstring       iAutosarVersion
+  !@lstring       iAutosarDescription
+{
+  @lstring autosarVersion = lstringWith(!"")
+  @lstring autosarDescription = lstringWith(!"")
+
+  # Get AUTOSAR version from one of the AUTOSAR's ADMIN-DATA node
+  @arxmlElementList autosarNodes = .emptyList
+  [rootNode getSubElementsFromName !"AUTOSAR" !?autosarNodes]
+  if [autosarNodes length] == 0 then
+    error .here : "[TPS_GST_00077] : Missing root AUTOSAR node."
+  end
+
+  @arxmlElementList adminDataNodes = .emptyList
+  [autosarNodes getSubElementsFromName !"ADMIN-DATA" !?adminDataNodes]
+  if [adminDataNodes length] == 0 then
+    error .here : "[TPS_ECUC_06004] : Missing AUTOSAR's ADMIN-DATA node."
+  end
+
+  @arxmlElementList revisions = .emptyList
+  [adminDataNodes getElementsFromName !"DOC-REVISION" !?revisions]
+  if [adminDataNodes length] == 0 then
+    error .here : "Missing AUTOSAR'S ADMIN-DATA's DOC-REVISION NODE"
+  end
+
+  @bool version_found = false
+  @bool issued_by_found = false
+  @lstring issued_by = lstringWith(!"")
+
+  for (@arxmlElementNode revision) in revisions
+  while not version_found do
+    issued_by_found = false
+    [revision getProperty !"ISSUED-BY" !?issued_by !?issued_by_found]
+    if issued_by_found && issued_by.string == "AUTOSAR" then
+      @bool description_found = false
+      [revision getProperty !"REVISION-LABEL" !?autosarVersion !?version_found]
+      [revision getProperty !"DATE" !?autosarDescription !?description_found ]
+    end
+  end
+
+  iAutosarVersion = autosarVersion
+  iAutosarDescription = autosarDescription
+}
+
+###############################################################################
+# Includes the config files
+#
+proc includeConfigs
+  ?!@implementation imp
+  ?!@applicationDefinition application
+  ?!@string fileIncludeList
+  ?@lstring version
+{
+    let @string config_file_name = [option goil_options.config value]
+    let @stringlist configFiles = allTemplateFilePaths(!"config"
+                                                   !config_file_name+".oil")
+
+    # files are stored from the deepest to the shallowest and we should go from
+    # the shallowest to the deepest.
+    for > (@string file) in configFiles do
+      grammar goil_file_level_include in lstringWith(!file)
+                                              !?imp !?application
+                                              !?fileIncludeList !false
+    end
+
+    # then look for config files suffixed by the OIL version
+    let @stringlist configVersionFiles = allTemplateFilePaths(!"config"
+                                  !config_file_name + [version string] +".oil")
+
+    for > (@string file) in configVersionFiles do
+      grammar goil_file_level_include in lstringWith(!file)
+                                              !?imp !?application
+                                              !?fileIncludeList !false
+    end
+}
+
+proc nodeToClass
+  ?@arxmlNode     rootNode
+  ?!@arxmlMetaClassMap classMap
+  !@arxmlElementValue rootValue
+{
+  @arxmlElementList autosarNodes = .emptyList
+  [rootNode getSubElementsFromName !"AUTOSAR" !?autosarNodes]
+  if [autosarNodes length] == 0 then
+    error .here : "[TPS_GST_00077] : Missing root AUTOSAR node."
+  end
+  if [autosarNodes length] > 1 then
+    error .here : "[TPS_GST_00077] : Too many AUTOSAR nodes."
+  end
+
+  #@arxmlElementValue elementValue
+  let @arxmlElementNode autosarNode
+  [autosarNodes first ?autosarNode]
+  nodeToClassRes(!autosarNode !classMap ?rootValue)
+}
+
+proc nodeToClassRes
+  ?@arxmlElementNode currentElement
+  ?@arxmlMetaClassMap classMap
+  !@arxmlElementValue elementValue
+{
+  # Get the node's Class
+  let @arxmlMetaClass currentClass
+  [classMap searchKey ![currentElement name] ?currentClass]
+
+  # Get the subText if any
+  @bool textFound = false
+  @lstring text = .new{!"" !.nowhere}
+  [currentElement getText !?text !?textFound]
+
+  # Create the Element Class
+  let @lstring type = [currentClass name]
+  elementValue = @arxmlElementValue.new{
+                                        !type
+                                        !text
+                                        !.emptyMap
+                                        ![currentElement attributes]
+                                       }
+
+  # Check Element existence
+  [currentElement getSubElements ?let @arxmlElementList subElements]
+  for (@arxmlElementNode subElement) in subElements do
+    if not [currentClass hasElement ![subElement name].string] then
+      error [subElement name] : "The element " + [subElement name].string
+                  + " does not belong to the "
+                  + [currentElement name].string + " element.\n"
+                  + "Possible elements are :\n "+ [currentClass lElementLegacy]
+    end
+  end
+
+  # Check Attributes existence (except for root AUTOSAR node that may contain
+  # anything)
+  if [currentElement name].string != "AUTOSAR" then
+    for () in [currentElement attributes] do
+      if not [currentClass hasAttribute !lkey.string] then
+        error lkey : "The attribute " + lkey.string + " does not belong to the "
+                   + [currentElement name].string + " element.\nPossible "
+                   + "attributes are :\n " + [currentClass lAttributeLegacy]
+      end
+    end
+  end
+
+  # Create Element values. Check if there is enough elements.
+  for (@arxmlMetaElement eElement) in [currentClass lElementLegacy] do
+    @arxmlElementList subElements = {}
+
+    [currentElement getSubElementsFromName ![eElement name].string
+                                           !?subElements]
+
+    ##### Test if the number of elements of this kind is correct
+    @uint minOccurs = 1
+    @uint maxOccurs = 1
+    # Get the minOccurs if declared in the meta file
+    if [eElement minOccurs].string != ""
+    && [[eElement minOccurs].string isDecimalUnsignedNumber] then
+      minOccurs = [[eElement minOccurs].string decimalUnsignedNumber]
+    end
+    # Test the minimum
+    if [subElements length] < minOccurs then
+      error [currentElement name] : "Missing element " + [eElement name].string
+                  + ". Minimum : " + minOccurs + "."
+                  + " Found " + [subElements length]
+    end
+
+    # If noted as "unbounded", do not test the maximum
+    if [eElement maxOccurs].string != "unbounded"
+    && [eElement maxOccurs].string != "" then
+      # Get the maxOccurs if declared in the meta file
+      if [eElement maxOccurs].string != ""
+      && [[eElement maxOccurs].string isDecimalUnsignedNumber] then
+        maxOccurs = [[eElement maxOccurs].string decimalUnsignedNumber]
+      end
+      # Test the maximum
+      if [subElements length] > maxOccurs then
+        error [currentElement name] : "Too many node " + [eElement name].string
+                    + ". Minimum : " + minOccurs + " ; Maximum : " + maxOccurs
+                    + ". Found " + [subElements length]
+      end
+    end
+
+    # Finally add the Element
+    for (@arxmlElementNode subElement) in subElements do
+      let @arxmlElementValue subElementValue
+      nodeToClassRes(!subElement !classMap ?subElementValue)
+      [!?elementValue insertElement ![subElement name] !subElementValue]
+    end
+  end
+}
+
+proc addText
+  ?!@arxmlNodeList nodes
+  ?let @bool       doNotCondenseWhiteSpaces
+{
+  let @string s = .retrieveAndResetTemplateString
+  let @string trimmedString = [s stringByTrimmingWhiteSpaces]
+  if [trimmedString length] > 0 then
+    let @lstring ls
+    if doNotCondenseWhiteSpaces then
+      ls = .new { !s !.here }
+    else
+      ls = .new { !trimmedString !.here }
+    end
+
+    nodes += !@arxmlTextNode.new { !ls }
+  end
+}
+
+proc convertToOil
+  ?!@implementation imp
+  ?!@applicationDefinition application
+  ?@arxmlElementValue rootValue
+{
+  let @lstring emptyPath = .new {!"" !.nowhere}
+
+  # Get first Packages Node
+  @arxmlElementValueList packages = {}
+  @stringlist packagesPath = {}
+  packagesPath += !"AR-PACKAGES"
+  packagesPath += !"AR-PACKAGE"
+  [rootValue getElementsByPath !packagesPath !?packages]
+
+  ##### Implementation
+  for(@arxmlElementValue package) in packages do
+    arxmlImplementationPackage(!?imp !package !emptyPath)
+  end
+
+  ##### Definitions
+  for(@arxmlElementValue package) in packages do
+    arxmlDefinitionPackage(!?imp !?application !package !emptyPath)
+  end
+}
+
+##############################################################################
+# Parsing of Implementation packages
+#
+
+proc arxmlImplementationPackage
+  ?!@implementation imp
+  ?@arxmlElementValue packageElement
+  ?@lstring parentPath
+{
+  # Get packageName
+  let @lstring packageName = [packageElement getTextFromElement !"SHORT-NAME"]
+
+  # Compute the new element path
+  let @lstring currentPath = .new{![parentPath string] + "/" + [packageName string]
+                                  ![packageName location]}
+
+  # Get the direct subnodes that correspond to an implementation definition
+  @arxmlElementValueList definitions = {}
+  @stringlist definitionPath = {}
+  definitionPath += !"ELEMENTS"
+  definitionPath += !"ECUC-MODULE-DEF"
+  [packageElement getElementsByPath !definitionPath !?definitions]
+  for(@arxmlElementValue definition) in definitions do
+    arxmlImplementationRoot(!?imp !definition !currentPath)
+  end
+
+  # Recursive call if there is another package inside
+  @arxmlElementValueList packages = {}
+  @stringlist packagesPath = {}
+  packagesPath += !"AR-PACKAGES"
+  packagesPath += !"AR-PACKAGE"
+  [packageElement getElementsByPath !packagesPath !?packages]
+  for(@arxmlElementValue package) in packages do
+    arxmlImplementationPackage(!?imp !package !currentPath)
+  end
+}
+
+proc arxmlImplementationRoot
+  ?!@implementation implementation
+  ?@arxmlElementValue packageElement
+  ?@lstring parentPath
+{
+  # Get IMPLEMENTATION Name
+  let @lstring objectName = [packageElement getTextFromElement !"SHORT-NAME"]
+  displayOil(!"\nIMPLEMENTATION " + objectName)
+
+  # Compute implementation path
+  let @lstring currentPath = .new{![parentPath string] + "/" + [objectName string]
+                              ![parentPath location]}
+
+  # Get the description if any
+  arxmlGetDescription(!packageElement ?let @lstring oil_desc)
+
+  # Get the subdefinitions
+  @arxmlElementValueList subDefs = {}
+  @stringlist subDefsPath = {}
+  subDefsPath += !"CONTAINERS"
+  subDefsPath += !"ECUC-PARAM-CONF-CONTAINER-DEF"
+  [packageElement getElementsByPath !subDefsPath !?subDefs]
+
+  displayOil(!"\n{\n")
+
+  # Iterate through the definitions
+  for(@arxmlElementValue subDefinition) in subDefs do
+    arxmlImplementationObject(!?implementation !subDefinition !currentPath)
+  end
+
+  displayOil(!"}; /* END IMPLEMENTATION " + [objectName string]
+              + " : \"" + oil_desc + "\" */\n")
+}
+
+proc arxmlImplementationObject
+  ?!@implementation implementation
+  ?@arxmlElementValue packageElement
+  ?@lstring parentPath
+{
+  @implementationMap imp = [implementation imp]
+  @implementationObjectMap objectAttributes = .emptyMap
+
+  # Get OBJECT Name (We'll prefer using the objectKind as it's the same name
+  # without the package name extension)
+  let @lstring objectName = [packageElement getTextFromElement !"SHORT-NAME"]
+
+  # Compute implementation path
+  let @lstring currentPath = .new{![parentPath string] + "/" + [objectName string]
+                              ![parentPath location]}
+  #oilEquivalentName(!parentPath !currentPath ?@lstring objectKind)
+  # TODO : Définir la norme d'écriture des noms
+  @lstring objectKind = objectName
+  objectKind.string = [[objectName string] uppercaseString]
+  # End TODO
+  displayOil(!"  " + [objectKind string])
+
+  # Get multiplicity
+  arxmlGetMultiplicity(!packageElement !objectName ?let @lbool multiple)
+  displayOil(!"\n  {\n")
+
+  # Get the description if any
+  arxmlGetDescription(!packageElement ?let @lstring oil_desc)
+
+  # Parse contained elements
+  arxmlImplementationContainer(!?objectAttributes
+                               !packageElement
+                               !currentPath)
+
+  displayOil(!"  }; /* \"" + [oil_desc string] + "\"*/\n")
+
+
+  # Create implementation object
+  let @implementationObject newObject = .new { !multiple !objectAttributes }
+
+  # Check if this object already exists
+  # If yes, the new declaration is merged with the old one
+  @implementationObject object
+  if [implementation hasKey ![objectName string]] then
+    [!?imp del !objectName ?object]
+    object = [object mergeImplementationObjectWith !newObject]
+#    message "Redefinition de "+objectName+"\n"
+  else
+    object = newObject
+  end
+
+  [!?imp put !objectName !object]
+  [!?implementation setImp !imp]
+}
+
+proc arxmlImplementationContainer
+  ?!@implementationObjectMap objectAttributes
+  ?@arxmlElementValue currentElement
+  ?@lstring parentPath
+{
+  # -------------------------------------------------------------------------
+  # INTEGERS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList intParameters = {}
+  @stringlist intParametersPath = {}
+  intParametersPath += !"PARAMETERS"
+  intParametersPath += !"ECUC-INTEGER-PARAM-DEF"
+  [currentElement getElementsByPath !intParametersPath !?intParameters]
+
+  for(@arxmlElementValue parameter) in intParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerNumber(?attributeName
+                                       ?type
+                                       !@dataType.uint64Number # sint64 too
+                                       !parameter
+                                       !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # FLOATS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList floatParameters = {}
+  @stringlist floatParametersPath = {}
+  floatParametersPath += !"PARAMETERS"
+  floatParametersPath += !"ECUC-FLOAT-PARAM-DEF"
+  [currentElement getElementsByPath !floatParametersPath !?floatParameters]
+
+  for(@arxmlElementValue parameter) in floatParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerNumber(?attributeName
+                                       ?type
+                                       !@dataType.floatNumber
+                                       !parameter
+                                       !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # STRINGS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList stringParameters = {}
+  @stringlist stringParametersPath = {}
+  stringParametersPath += !"PARAMETERS"
+  stringParametersPath += !"ECUC-STRING-PARAM-DEF"
+  [currentElement getElementsByPath !stringParametersPath !?stringParameters]
+
+  for(@arxmlElementValue parameter) in stringParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerString(?attributeName
+                                       ?type
+                                       !@dataType.string
+                                       !parameter
+                                       !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # BOOLEANS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList booleanParameters = {}
+  @stringlist booleanParametersPath = {}
+  booleanParametersPath += !"PARAMETERS"
+  booleanParametersPath += !"ECUC-BOOLEAN-PARAM-DEF"
+  [currentElement getElementsByPath !booleanParametersPath !?booleanParameters]
+
+  for(@arxmlElementValue parameter) in booleanParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerBoolean(?attributeName
+                                        ?type
+                                        !@dataType.boolean
+                                        !parameter
+                                        !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # ENUMS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList enumParameters = {}
+  @stringlist enumParametersPath = {}
+  enumParametersPath += !"PARAMETERS"
+  enumParametersPath += !"ECUC-ENUMERATION-PARAM-DEF"
+  [currentElement getElementsByPath !enumParametersPath !?enumParameters]
+
+  for(@arxmlElementValue parameter) in enumParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerEnumeration(?attributeName
+                                            ?type
+                                            !@dataType.enumeration
+                                            !parameter
+                                            !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # STRUCTS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList structParameters = {}
+  @stringlist structParametersPath = {}
+  structParametersPath += !"SUB-CONTAINERS"
+  structParametersPath += !"ECUC-PARAM-CONF-CONTAINER-DEF"
+  [currentElement getElementsByPath !structParametersPath !?structParameters]
+
+  for(@arxmlElementValue parameter) in structParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerStructure(?attributeName
+                                          ?type
+                                          !@dataType.structType
+                                          !parameter
+                                          !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # IDENTIFIERS
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList identParameters = {}
+  @stringlist identParametersPath = {}
+  identParametersPath += !"REFERENCES"
+  identParametersPath += !"TPL-IDENTIFIER-DEF"
+  [currentElement getElementsByPath !identParametersPath !?identParameters]
+
+  for(@arxmlElementValue parameter) in identParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerIdentifier(?attributeName
+                                           ?type
+                                           !@dataType.identifier
+                                           !parameter
+                                           !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+  # -------------------------------------------------------------------------
+  # REFERENCES
+  # -------------------------------------------------------------------------
+  @arxmlElementValueList refParameters = {}
+  @stringlist refParametersPath = {}
+  refParametersPath += !"REFERENCES"
+  refParametersPath += !"ECUC-REFERENCE-DEF"
+  [currentElement getElementsByPath !refParametersPath !?refParameters]
+
+  for(@arxmlElementValue parameter) in refParameters do
+    let @lstring attributeName
+    let @impType type
+    arxmlImplementationContainerReference(?attributeName
+                                          ?type
+                                          !@dataType.objectType
+                                          !parameter
+                                          !parentPath)
+    arxmlInsertObjectAttribute(!?objectAttributes !attributeName !type)
+  end
+
+}
+
+proc arxmlImplementationContainerNumber
+  !@lstring objectName
+  !@impType options
+  ?let @dataType iType
+  ?@arxmlElementValue parameter
+  ?@lstring unused parentPath
+{
+  # We still don't know if the type is sint or uint until we parse MIN and MAX
+  @dataType type = iType
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # With-auto
+  arxmlGetWithAuto(!parameter ?let @bool withAuto)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  # Get the range
+  # TODO : We require both MIN and MAX are defined. We should instead treat
+  #        both cases appart.
+  let @attributeRange range
+  if [parameter hasElement !"MIN"] && [parameter hasElement !"MAX"] then
+    @lstring min = [parameter getTextFromElement !"MIN"]
+    @lstring max = [parameter getTextFromElement !"MAX"]
+    @string minSignString = ""
+    @string maxSignString = ""
+
+    if [[max string] uppercaseString] == "INF" then
+      max.string = [@sint64.max string]
+    end
+
+    arxmlPopSign(!?min ?let @bool minSign)
+    arxmlPopSign(!?max ?let @bool maxSign)
+
+    # Deduce if the type is sint or uint from the sign
+    if minSign then
+      minSignString = "-"
+      type = @dataType.sint64Number
+    end
+    if maxSign then
+      maxSignString = "-"
+      type = @dataType.sint64Number
+    end
+    displayOil(!"    " + [type oilType])
+    displayOil(!"  " + [objectName string])
+
+    let @object_t start
+    let @object_t stop
+
+    if type == @dataType.uint64Number || type == @dataType.sint64Number then
+      let @luint64 minVal = .new {
+                              ![[min string] decimalUnsigned64Number]
+                              ![min location]
+                             }
+      let @luint64 maxVal = .new {
+                              ![[max string] decimalUnsigned64Number]
+                              ![max location]
+                             }
+      displayOil(!"[" + minSignString + [minVal string]
+                + " .. " + maxSignString + [maxVal string] + "]")
+      start = checkAndGetIntegerNumber(!emptyLString() !type !minVal !minSign)
+      stop = checkAndGetIntegerNumber(!emptyLString() !type !maxVal !maxSign)
+    elsif type == @dataType.floatNumber then
+      let @ldouble minVal = .new {
+                              ![[min string] doubleNumber]
+                              ![min location]
+                             }
+      let @ldouble maxVal = .new {
+                              ![[max string] doubleNumber]
+                              ![max location]
+                             }
+      displayOil(!"[" + [minVal string] + " .. " + [maxVal string] + "]")
+      start = checkAndGetFloatNumber(!emptyLString() !type !minVal !minSign)
+      stop = checkAndGetFloatNumber(!emptyLString() !type !maxVal !maxSign)
+    else
+      error .here : "Internal error" : start,stop
+    end
+    range = buildRange(!type !start !stop)
+  else
+    displayOil(!"    " + [type oilType])
+    displayOil(!"  " + [objectName string])
+    range = @noRange.new{![objectName location]}
+  end
+
+  # Default value
+  let @object_t defaultValue
+  if [parameter hasElement !"DEFAULT-VALUE"] then
+    @lstring value = [parameter getTextFromElement !"DEFAULT-VALUE"]
+
+    # Get the sign if exists
+    arxmlPopSign(!?value ?let @bool sign)
+
+    # Compute the default value depending of the type of the parameter
+    if type == @dataType.uint64Number || type == @dataType.sint64Number then
+      let @luint64 integerValue = .new {
+                                 ![[value string] decimalUnsignedNumber]
+                                 ![value location]}
+      displayOil(!" = " + [integerValue string])
+      defaultValue = checkAndGetIntegerNumber(!oil_desc
+                                              !type
+                                              !integerValue
+                                              !sign)
+    elsif type == @dataType.floatNumber then
+      let @ldouble floatValue = .new {
+                                 ![[value string] doubleNumber]
+                                 ![value location]}
+      displayOil(!" = " + [floatValue string])
+      defaultValue = checkAndGetFloatNumber(!oil_desc
+                                            !type
+                                            !floatValue
+                                            !sign)
+    else
+      error .here : "Internal error" : defaultValue
+    end
+  elsif withAuto then
+    defaultValue = @auto.new {!oil_desc ![objectName location]}
+  else
+    defaultValue = @void.new {!oil_desc ![objectName location]}
+  end
+  displayOil(!": \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @impRangedType.new{!{![objectName location]}
+                               !type
+                               !objectName
+                               !multiple
+                               !{!oil_desc}
+                               !withAuto
+                               !defaultValue
+                               !range}
+}
+
+proc arxmlImplementationContainerString
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring unused parentPath
+{
+  displayOil(!"    " + [type oilType])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!"  " + [objectName string])
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # With-auto
+  arxmlGetWithAuto(!parameter ?let @bool withAuto)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+
+  # Default value
+  let @object_t defaultValue
+  if [parameter hasElement !"DEFAULT-VALUE"] then
+    let @lstring value = [parameter getTextFromElement !"DEFAULT-VALUE"]
+    displayOil(!" = \"" + [value string] + "\"")
+    defaultValue = @stringAttribute.new{
+                                        !oil_desc
+                                        ![value location]
+                                        ![value string]
+                                       }
+  elsif withAuto then
+    defaultValue = @auto.new {!oil_desc ![objectName location]}
+  else
+    defaultValue = @void.new {!oil_desc ![objectName location]}
+  end
+  displayOil(!": \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @impAutoDefaultType.new{
+                                    !{![objectName location]}
+                                    !type
+                                    !objectName
+                                    !multiple
+                                    !{!oil_desc}
+                                    !withAuto
+                                    !defaultValue
+                                   }
+}
+
+proc arxmlImplementationContainerBoolean
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring parentPath
+{
+  displayOil(!"    " + [type oilType])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!"  " + [objectName string])
+
+  # With-auto
+  arxmlGetWithAuto(!parameter ?let @bool withAuto)
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  # Default value
+  let @object_t defaultValue
+  if [parameter hasElement !"DEFAULT-VALUE"] then
+    let @lstring value = [parameter getTextFromElement !"DEFAULT-VALUE"]
+    let @bool booleanValue
+    if [value.string uppercaseString] == "TRUE"
+    || value.string == "1" then
+      booleanValue = true
+    elsif [value.string uppercaseString] == "FALSE"
+    || value.string == "0" then
+      booleanValue = false
+    else
+      booleanValue = false
+      error value : "A Boolean must be 'true', 'false', '0' or '1'"
+    end
+    displayOil(!" = " + [booleanValue cString])
+    defaultValue = @boolAttribute.new{
+                                      !oil_desc
+                                      ![value location]
+                                      !booleanValue
+                                      !@objectAttributes.new
+                                      {
+                                       !@identifierMap.emptyMap
+                                      }
+                                     }
+  elsif withAuto then
+    defaultValue = @auto.new {!oil_desc ![objectName location]}
+  else
+    defaultValue = @void.new {!oil_desc ![objectName location]}
+  end
+
+  # Get subattributes
+  # XXX : In Arxml, Booleans don't have sub-containers. This test should never
+  #       pass.
+  var structAttributes = @implementationObjectMap.emptyMap{}
+  if [parameter hasElement !"SUB-CONTAINERS"] then
+    displayOil(!"\n    {\n")
+    arxmlImplementationContainer(!?structAttributes !parameter !parentPath)
+    displayOil(!"\n    } : \"" + oil_desc + "\";\n")
+  else
+    displayOil(!" : \"" + oil_desc + "\";\n")
+  end
+
+  # Compute options
+  options = @impBoolType.new{
+                             !{![objectName location]}
+                             !type
+                             !objectName
+                             !multiple
+                             !{!oil_desc}
+                             !withAuto
+                             !defaultValue
+                             !structAttributes
+                             !structAttributes
+                            }
+}
+
+proc arxmlImplementationContainerEnumeration
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring unused parentPath
+{
+  displayOil(!"    " + [type oilType])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!"  " + [objectName string] + "[")
+
+  # With-auto
+  arxmlGetWithAuto(!parameter ?let @bool withAuto)
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  # Possible values
+  # XXX : In Arxml, Enums don't have sub-containers.
+  var enumValues = @enumValues.emptyMap{}
+  @arxmlElementValueList enumElementValues = {}
+  @stringlist enumElementValuesPath = {}
+  enumElementValuesPath += !"LITERALS"
+  enumElementValuesPath += !"ECUC-ENUMERATION-LITERAL-DEF"
+  [parameter getElementsByPath !enumElementValuesPath !?enumElementValues]
+  for (@arxmlElementValue enumValue) in enumElementValues do
+    let @lstring enumValueName = [enumValue getTextFromElement !"SHORT-NAME"]
+    [!?enumValues put !enumValueName !@implementationObjectMap.emptyMap{}]
+    displayOil(![enumValueName string])
+  between
+    displayOil(!", ")
+  end
+  displayOil(!"]")
+
+  # Default value
+  let @object_t defaultValue
+  if [parameter hasElement !"DEFAULT-VALUE"] then
+    let @lstring value = [parameter getTextFromElement !"DEFAULT-VALUE"]
+    displayOil(!" = " + [value string])
+    defaultValue = @enumAttribute.new{
+                                      !oil_desc
+                                      ![value location]
+                                      ![value string]
+                                      !@objectAttributes.new
+                                      {
+                                       !@identifierMap.emptyMap
+                                      }
+                                     }
+  elsif withAuto then
+    defaultValue = @auto.new {!oil_desc ![objectName location]}
+  else
+    defaultValue = @void.new {!oil_desc ![objectName location]}
+  end
+
+  displayOil(!"\n : \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @impEnumType.new{
+                             !{![objectName location]}
+                             !type
+                             !objectName
+                             !multiple
+                             !{!oil_desc}
+                             !withAuto
+                             !defaultValue
+                             !enumValues
+                            }
+}
+
+
+proc arxmlImplementationContainerStructure
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring parentPath
+{
+  displayOil(!"    " + [type oilType])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!"  " + [objectName string])
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  displayOil(!"\n    {\n")
+
+  # Get subattributes
+  var structAttributes = @implementationObjectMap.emptyMap{}
+  arxmlImplementationContainer(!?structAttributes !parameter !parentPath)
+
+  displayOil(!"\n    } : \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @impStructType.new{
+                               !{![objectName location]}
+                               !type
+                               !objectName
+                               !multiple
+                               !{!oil_desc}
+                               !structAttributes
+                              }
+}
+
+proc arxmlImplementationContainerIdentifier
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring unused parentPath
+{
+  displayOil(!"    " + [type oilType])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!"  " + [objectName string])
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # With-auto
+  arxmlGetWithAuto(!parameter ?let @bool withAuto)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  # Default value
+  let @object_t defaultValue
+  if [parameter hasElement !"DEFAULT-VALUE"] then
+    let @lstring value = [parameter getTextFromElement !"DEFAULT-VALUE"]
+    displayOil(!" = " + [value string])
+    defaultValue = @stringAttribute.new{
+                                        !oil_desc
+                                        ![value location]
+                                        ![value string]
+                                       }
+  elsif withAuto then
+    defaultValue = @auto.new {!oil_desc ![objectName location]}
+  else
+    defaultValue = @void.new {!oil_desc ![objectName location]}
+  end
+  displayOil(!": \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @impAutoDefaultType.new{
+                                    !{![objectName location]}
+                                    !type
+                                    !objectName
+                                    !multiple
+                                    !{!oil_desc}
+                                    !withAuto
+                                    !defaultValue
+                                   }
+}
+
+proc arxmlImplementationContainerReference
+  !@lstring objectName
+  !@impType options
+  ?let @dataType type
+  ?@arxmlElementValue parameter
+  ?@lstring unused parentPath
+{
+  # Get the type
+  @lstring objectType = [parameter getTextFromElement !"DESTINATION-REF"]
+  #oilEquivalentName(!objectRefPath !objectRefPath ?@lstring objectType)
+  objectType.string = [[objectType string] lastPathComponent]
+  displayOil(!"    " + [objectType string])
+
+  # Get the name
+  arxmlGetName(!parameter ?objectName)
+  displayOil(!" " + [objectName string])
+
+  # Get the multiplicity
+  arxmlGetMultiplicity(!parameter !objectName ?let @lbool multiple)
+
+  # Get the description if any
+  arxmlGetDescription(!parameter ?let @lstring oil_desc)
+
+  displayOil(!": \"" + oil_desc + "\";\n")
+
+  # Compute options
+  options = @refType.new{
+                         !{![objectName location]}
+                         !type
+                         !objectName
+                         !multiple
+                         !{!oil_desc}
+                         !objectType
+                        }
+}
+
+##############################################################################
+# Parsing of OS package
+#
+
+proc arxmlDefinitionPackage
+  ?!@implementation imp
+  ?!@applicationDefinition application
+  ?@arxmlElementValue packageElement
+  ?@lstring parentPath
+{
+  # Get packageName
+  let @lstring packageName = [packageElement getTextFromElement !"SHORT-NAME"]
+
+  # Compute the new element path
+  let @lstring currentPath = .new{![parentPath string] + "/" + [packageName string]
+                                  ![packageName location]}
+
+  # Get the direct subnodes that correspond to an application definition
+  @arxmlElementValueList definitions = {}
+  @stringlist definitionPath = {}
+  definitionPath += !"ELEMENTS"
+  definitionPath += !"ECUC-MODULE-CONFIGURATION-VALUES"
+  [packageElement getElementsByPath !definitionPath !?definitions]
+  for(@arxmlElementValue definition) in definitions do
+    arxmlDefinitionRoot(!?imp !?application !definition !currentPath)
+  end
+
+  # Recursive call if there is another package inside
+  @arxmlElementValueList packages = {}
+  @stringlist packagesPath = {}
+  packagesPath += !"AR-PACKAGES"
+  packagesPath += !"AR-PACKAGE"
+  [packageElement getElementsByPath !packagesPath !?packages]
+  for(@arxmlElementValue package) in packages do
+    arxmlDefinitionPackage(!?imp !?application !package !currentPath)
+  end
+}
+
+proc arxmlDefinitionRoot
+  ?!@implementation imp
+  ?!@applicationDefinition application
+  ?@arxmlElementValue packageElement
+  ?@lstring unused parentPath
+{
+  # Get CPU Name
+  let @lstring cpuName = [packageElement getTextFromElement !"SHORT-NAME"]
+
+  # Get the module reference name
+  let @lstring currentPath = [packageElement getTextFromElement !"DEFINITION-REF"]
+
+  # Get defined application objects
+  @objectsMap objects = [application objects]
+
+  # Get the description if any
+  arxmlGetDescription(!packageElement ?let @lstring oil_desc)
+
+  # Get the subdefinitions
+  @arxmlElementValueList subDefs = {}
+  @stringlist subDefsPath = {}
+  subDefsPath += !"CONTAINERS"
+  subDefsPath += !"ECUC-CONTAINER-VALUE"
+  [packageElement getElementsByPath !subDefsPath !?subDefs]
+
+  displayOil(!"\nCPU " + cpuName + "\n{\n")
+
+  for(@arxmlElementValue subDefinition) in subDefs do
+    arxmlDefinitionObject(!?imp !?objects !subDefinition !currentPath)
+  end
+
+  # Set the CPU variables
+  [!?application setName !cpuName]
+  [!?application setObjects !objects]
+
+  displayOil(!"}; /* END CPU " + [cpuName string]
+              + " : \"" + oil_desc + "\" */\n")
+}
+
+proc arxmlDefinitionObject
+  ?!@implementation imp
+  ?!@objectsMap objects
+  ?@arxmlElementValue currentElement
+  ?@lstring parentPath
+{
+  # Get the object's oil kind
+  let @lstring currentPath = [currentElement getTextFromElement !"DEFINITION-REF"]
+  oilEquivalentName(!parentPath !currentPath ?let @lstring objectKind)
+
+  # Test multiplicity
+  let @implementationObject impObjOfKind = [imp impObject ![objectKind string]]
+  @objectKind objectsForKind = @objectKind. new { !@objectKindMap. emptyMap}
+  if [objects hasKey ![objectKind string]] then
+    [!?objects del !objectKind ?objectsForKind]
+  end
+
+  # Get Object name
+  @lstring objectName = [currentElement getTextFromElement !"SHORT-NAME"]
+
+  # Get already defined objects
+  @objectAttributes object = emptyObject()
+  @objectKindMap objectsKind = [objectsForKind objects]
+  if [[impObjOfKind multiple] bool] == false then
+    # The object cannot be instanciated multiple time, it's stored in the
+    # object list not with its name as a key but its kind, thus we'll always
+    # modify this uniq object each time we encounter it.
+    objectName = objectKind
+  end
+
+  # If the object has already been defined, get it
+  if [objectsKind hasKey ![objectName string]] then
+    [!?objectsKind del !objectName ?object]
+  end
+
+  # Get the description if any
+  arxmlGetDescription(!currentElement ?let @lstring oil_desc)
+
+  displayOil(!"  " + [objectKind string] +" "+ [objectName string] + "\n  {\n")
+
+  # Parse contained elements
+  arxmlDefinitionContainer(![impObjOfKind attributes]
+                           !?object
+                           !currentElement
+                           !currentPath)
+
+  displayOil(!"  } : \"" + [oil_desc string] + "\";\n")
+
+  # XXX : Comment this
+  @identifierMap attributes = [object objectParams]
+  if not [attributes hasKey !"NAME"] then
+    [!?attributes put !@lstring. new { !"NAME" ![objectName location]}
+                      !@stringAttribute. new { !oil_desc
+                                               ![objectName location]
+                                               ![objectName string]}]
+    [!?object setObjectParams !attributes]
+  end
+  [!?objectsKind put !objectName !object]
+  [!?objectsForKind setObjects !objectsKind]
+  [!?objects put !objectKind !objectsForKind]
+}
+
+proc arxmlDefinitionContainer
+  ?let @implementationObjectMap types
+  ?!@objectAttributes identifiers
+  ?@arxmlElementValue currentElement
+  ?@lstring currentPath
+{
+  # Insert Text parameters (Strings, Enumerations, Booleans true/false)
+  @arxmlElementValueList textParameters = {}
+  @stringlist textParametersPath = {}
+  textParametersPath += !"PARAMETER-VALUES"
+  textParametersPath += !"ECUC-TEXTUAL-PARAM-VALUE"
+  [currentElement getElementsByPath !textParametersPath !?textParameters]
+
+  # Insert Numerical parameters (Integers, Floats, Booleans 1/0)
+  @arxmlElementValueList numParameters = {}
+  @stringlist numParametersPath = {}
+  numParametersPath += !"PARAMETER-VALUES"
+  numParametersPath += !"ECUC-NUMERICAL-PARAM-VALUE"
+  [currentElement getElementsByPath !numParametersPath !?numParameters]
+
+  # Insert References parameters ()
+  @arxmlElementValueList refParameters = {}
+  @stringlist refParametersPath = {}
+  refParametersPath += !"REFERENCE-VALUES"
+  refParametersPath += !"ECUC-REFERENCE-VALUE"
+  [currentElement getElementsByPath !refParametersPath !?refParameters]
+
+  # Insert Structures parameters ()
+  @arxmlElementValueList structParameters = {}
+  @stringlist structParametersPath = {}
+  structParametersPath += !"SUB-CONTAINERS"
+  structParametersPath += !"ECUC-CONTAINER-VALUE"
+  [currentElement getElementsByPath !structParametersPath !?structParameters]
+
+  # Concatenate the lists
+  let @arxmlElementValueList allParameters = numParameters
+                                           + textParameters
+                                           + refParameters
+                                           + structParameters
+
+  # Create each parameters
+  for(@arxmlElementValue parameter) in allParameters do
+    arxmlDefinitionParameter(!types !?identifiers !parameter !currentPath)
+  end
+}
+
+proc arxmlDefinitionParameter
+  ?let @implementationObjectMap types
+  ?!@objectAttributes identifiers
+  ?@arxmlElementValue parameter
+  ?@lstring parentPath
+{
+  # Get parameter type
+  @object_t val
+  let @lstring parameterPath = [parameter getTextFromElement !"DEFINITION-REF"]
+  oilEquivalentName(!parentPath !parameterPath ?@lstring parameterType)
+
+  # Test type existence
+  @bool typeOk = false
+  @impType type = @impVoid. new { !{!@location.here }
+                                  !@dataType.
+                                  void !emptyLString()
+                                  !false
+                                  !{} }
+  # Get parameter value's type
+  let @lstring valueType = [parameter getAttributeValueFromElement
+                            !"DEFINITION-REF"
+                            !"DEST"]
+
+  # TODO ? : Get the description somewhere
+  let @lstring oil_desc = .new{!"" !.nowhere}
+
+  #############################################################################
+  # Get the parameter's oil value
+  #
+  @bool isAuto = false
+  @lstring parameterValue
+  if [parameter hasElement !"VALUE"] then
+    # -------------------------------------------------------------------------
+    # <=> String, Int, Bool, Float, Enum
+    # -------------------------------------------------------------------------
+    parameterValue = [parameter getTextFromElement !"VALUE"]
+  elsif [parameter hasElement !"VALUE-REF"] then
+    # -------------------------------------------------------------------------
+    # <=> Identifier, Object
+    # -------------------------------------------------------------------------
+    parameterValue = [parameter getTextFromElement !"VALUE-REF"]
+    # We want only the name of the reference stored in the last path component
+    parameterValue.string = [[parameterValue string] lastPathComponent]
+    # Remove the "Ref" or "Refs" flag in the parameterType
+    if [[parameterType string] rightSubString !3] == "REF" then
+      parameterType.string = [parameterType leftSubString
+                              ![parameterType length] - 3]
+    elsif [[parameterType string] rightSubString !4] == "REFS" then
+      parameterType.string = [parameterType leftSubString
+                              ![parameterType length] - 4]
+    else
+      error parameterType : "An object reference must end with REF or REFS"
+    end
+  elsif [parameter hasElement !"PARAMETER-VALUES"]
+     || [parameter hasElement !"REFERENCE-VALUES"] then
+    # -------------------------------------------------------------------------
+    # <=> STRUCT
+    # -------------------------------------------------------------------------
+    parameterValue = [parameter getTextFromElement !"SHORT-NAME"]
+  elsif [parameter hasElement !"IS-AUTO-VALUE"] then
+    # -------------------------------------------------------------------------
+    # <=> AUTO symbol
+    # -------------------------------------------------------------------------
+    parameterValue = [parameter getTextFromElement !"IS-AUTO-VALUE"]
+    if [[parameterValue string] uppercaseString] == "TRUE"
+    || [parameterValue string] == "1" then
+      isAuto = true
+    end
+  else
+    error parameterType : "No value has been found." : parameterValue
+  end
+
+  # Test and get implementation's type
+  if [types hasKey ![parameterType string]] then
+    [types get !parameterType ?type]
+    typeOk = true
+    # Test if the definition type matches the implementation type
+    testTypeError(![type type] !valueType)
+  else
+    error parameterType : [parameterType string] + " is not declared in the "
+                        + "IMPLEMENTATION."
+  end
+
+  displayOil(!"    " + parameterType)
+
+  var subTypes = @implementationObjectMap.emptyMap {}
+  @objectAttributes subAttributes = emptyObject()
+
+  #############################################################################
+  # Fill the val parameter depending of the type
+  #
+  if isAuto then
+    # -------------------------------------------------------------------------
+    # AUTO
+    # -------------------------------------------------------------------------
+    displayOil(!" = AUTO;")
+    if [type autoAllowed] then
+        val = @auto.new { !oil_desc ![parameterValue location]}
+    else
+      error @location.here : "AUTO is not allowed": val
+    end
+
+  elsif [valueType string] == "ECUC-ENUMERATION-PARAM-DEF" then
+    # -------------------------------------------------------------------------
+    # ENUMERATION
+    # -------------------------------------------------------------------------
+    let @impEnumType enumType = type as @impEnumType
+    if [[enumType valuesMap] hasKey ![parameterValue string]] then
+      [[enumType valuesMap] get !parameterValue ?subTypes]
+    else
+      error parameterValue : [parameterValue string] + " ENUM value "
+            + "for " + parameterType + " undeclared.\nOne of the following"
+            + "values are expected :\n" + valueList(![enumType valuesMap])
+    end
+
+    displayOil(!" = " + [parameterValue string])
+    if [subTypes count] != 0 then
+      displayOil(!"\n    {\n")
+      arxmlDefinitionContainer(!subTypes !?subAttributes
+                               !parameter !parentPath)
+      displayOil(!"    }")
+    end
+    displayOil(!";")
+
+    val = @enumAttribute.new {!oil_desc
+                              ![parameterValue location]
+                              ![parameterValue string]
+                              !subAttributes}
+
+  elsif [valueType string] == "ECUC-BOOLEAN-PARAM-DEF" then
+    # -------------------------------------------------------------------------
+    # BOOLEAN
+    # -------------------------------------------------------------------------
+    let @impBoolType boolType = type as @impBoolType
+    let @bool booleanValue
+    if [parameterValue.string uppercaseString] == "TRUE"
+    || parameterValue.string == "1" then
+      subTypes = [boolType trueSubAttributes]
+      booleanValue = true
+    elsif [parameterValue.string uppercaseString] == "FALSE"
+    || parameterValue.string == "0" then
+      subTypes = [boolType falseSubAttributes]
+      booleanValue = false
+    else
+      booleanValue = false
+      error parameterValue : "A Boolean must be 'true', 'false', '0' or '1'"
+    end
+
+    displayOil(!" = " + [[booleanValue cString] uppercaseString])
+    if [subTypes count] != 0 then
+      displayOil(!"\n    {\n")
+      arxmlDefinitionContainer(!subTypes !?subAttributes
+                               !parameter !parentPath)
+      displayOil(!"    }")
+    end
+    displayOil(!";")
+
+    val = @boolAttribute.new {!oil_desc
+                              ![parameterType location]
+                              !booleanValue
+                              !subAttributes}
+
+  elsif [valueType string] == "ECUC-INTEGER-PARAM-DEF" then
+    # -------------------------------------------------------------------------
+    # INTEGER
+    # -------------------------------------------------------------------------
+    arxmlPopSign(!?parameterValue ?let @bool sign)
+
+    let @luint64 integerValue = .new {
+                                   ![[parameterValue string] decimalUnsignedNumber]
+                                   ![parameterValue location]}
+
+    displayOil(!" = " + [integerValue string] + ";")
+
+    val = checkAndGetIntegerNumber(!oil_desc ![type type] !integerValue !sign)
+
+  elsif [valueType string] == "ECUC-FLOAT-PARAM-DEF" then
+    # -------------------------------------------------------------------------
+    # FLOAT
+    # -------------------------------------------------------------------------
+    arxmlPopSign(!?parameterValue ?let @bool sign)
+
+    let @ldouble floatValue = .new {
+                               ![[parameterValue string] doubleNumber]
+                               ![parameterValue location]}
+
+    displayOil(!" = " + [floatValue string] + ";")
+
+    val = checkAndGetFloatNumber(!oil_desc ![type type] !floatValue !sign)
+
+  elsif [valueType string] == "ECUC-STRING-PARAM-DEF" then
+    # -------------------------------------------------------------------------
+    # STRING
+    # -------------------------------------------------------------------------
+    displayOil(!" = \"" + [parameterValue string] + "\";")
+
+    val = @stringAttribute.new {!oil_desc
+                                ![parameterValue location]
+                                ![parameterValue string]}
+
+  elsif [valueType string] == "ECUC-REFERENCE-DEF" then
+    # -------------------------------------------------------------------------
+    # OBJECT REFERENCE
+    # -------------------------------------------------------------------------
+    displayOil(!" = " + [parameterValue string] + ";")
+
+    val = @objectRefAttribute.new {!oil_desc
+                                   ![parameterValue location]
+                                   !parameterValue}
+
+  elsif [valueType string] == "TPL-IDENTIFIER-DEF" then
+    # -------------------------------------------------------------------------
+    # IDENTIFIER
+    # -------------------------------------------------------------------------
+    displayOil(!" = " + [parameterValue string] + ";")
+
+    val = @string_class.new {!oil_desc
+                             ![parameterValue location]
+                             ![parameterValue string]}
+
+  elsif [valueType string] == "ECUC-PARAM-CONF-CONTAINER-DEF" then
+    # -------------------------------------------------------------------------
+    # STRUCTURES
+    # -------------------------------------------------------------------------
+    let @impStructType structType = type as @impStructType
+    subTypes = [structType structAttributes]
+
+    displayOil(!" " + [parameterValue string] + "\n    {\n")
+    arxmlDefinitionContainer(!subTypes !?subAttributes
+                             !parameter !parentPath)
+    displayOil(!"    };")
+
+    val = @structAttribute.new {!oil_desc
+                                ![parameterValue location]
+                                !parameterValue
+                                !subAttributes}
+  else
+    # -------------------------------------------------------------------------
+    # UNKNOWN TYPE
+    # -------------------------------------------------------------------------
+    error valueType : "Undefined valueType " + valueType : val
+    typeOk = false
+  end
+
+  displayOil(!"      /* ARXML Type :" + valueType + " */\n")
+
+  #############################################################################
+  # Multiple Attribute case
+  #
+  @identifierMap idfs= [identifiers objectParams]
+  if [type multiple] then
+    if [idfs hasKey ![parameterType string]] then
+      let @object_t attributeList
+      # the multiple identifier has been already encountered
+      # get the list
+      [!?idfs del !parameterType ?attributeList]
+      cast attributeList
+      case == @multipleAttribute multiAttribute :
+        @identifierList aList = [multiAttribute items]
+        aList += !val
+        val = @multipleAttribute. new { !emptyLString()
+                                        ![multiAttribute location]
+                                        !aList}
+      else end
+    else
+      @identifierList aList = .emptyList
+      # Get the type's default value
+      let @object_t defaultValue = [type getDefaultValue]
+
+      # If it's a list, get it
+      cast defaultValue
+      case == @multipleAttribute multiAttribute :
+        aList = [multiAttribute items]
+      else end
+
+      # The created list either contains the default list + current value, or
+      # the current value only (if there is no default list)
+      aList += !val
+
+      val = @multipleAttribute. new { !emptyLString() ![val location] !aList}
+    end
+      if [idfs hasKey ![parameterType string]] then
+        # The key already exists, we must merge the existing identifier with the
+        # new one
+        let @object_t existingObject
+        [!?idfs del !parameterType ?existingObject]
+        [!?val mergeSubAttributes !existingObject]
+      end
+  end
+
+  # Finaly insert the val in the identifiers
+  if typeOk then
+    [!?idfs put !parameterType !val]
+  end
+  [!?identifiers setObjectParams !idfs]
+}
+
+###############################################################################
+# Utils functions
+#
+
+proc testTypeError
+  ?@dataType type
+  ?@lstring valueType
+{
+  if [type arxmlType] != valueType.string then
+    error valueType : "Expected oil type " + [type oilType] + "."
+                    + " Found " + valueType.string + ".\n"
+                    + " Fix : Replace it with " + [type arxmlType]
+  end
+}
+
+proc oilEquivalentName
+  ?@lstring parentPath
+  ?@lstring currentPath
+  !@lstring outName
+{
+  if [parentPath string] == [currentPath string] then
+    parentPath.string = [[parentPath string] stringByDeletingLastPathComponent]
+  end
+
+  @lstring objectKind = .new {![currentPath lastPathComponent]
+                              ![currentPath location]}
+  # XXX : It seems the comparison must be done in uppercase, because of the
+  #       parent "NvM" that has an "NvmDem(...)" object. Perhaps this is just a
+  #       mistake ?
+  @string lastParent = [[parentPath lastPathComponent] uppercaseString]
+
+  # XXX : I'm not sure if "OsOS" is the only module that do not follow this
+  #       writting convention.
+  if lastParent == "OSOS" then
+    lastParent = "OS"
+  end
+
+  let @uint lastParentLength = [lastParent length]
+  if [[objectKind.string leftSubString !lastParentLength] uppercaseString]
+      == lastParent then
+    objectKind.string = [objectKind.string subStringFromIndex !lastParentLength]
+    objectKind.string = [objectKind.string uppercaseString]
+    outName = objectKind
+  else
+    error objectKind : "An object must be named by its Parent.\n "
+        + "Ex : If Task object has Os parent, then the DEFINITION-REF must be "
+        + "(...)/Os/OsTask.\n"
+        + "Fix : Add \"" + lastParent + "\" to the name of your property."
+        : outName
+  end
+}
+
+proc arxmlGetDescription
+  ?@arxmlElementValue packageElement
+  !@lstring description
+{
+  description = .new{!"" !.nowhere}
+
+  # Description is either in Desc, in Introduction or both
+  if [packageElement hasElement !"DESC"] then
+    [packageElement getElement !"DESC" ?let @arxmlElementValue desc]
+    [desc getAllTextsInSelf !" " !?description]
+  end
+  if [packageElement hasElement !"INTRODUCTION"] then
+    [packageElement getElement !"INTRODUCTION" ?let @arxmlElementValue desc]
+    [desc getAllTextsInSelf !" " !?description]
+  end
+
+  # Replace special characters
+  description.string = [[description string] stringByReplacingStringByString
+                                    !"\n"
+                                    !" "]
+  description.string = [[description string] stringByReplacingStringByString
+                                    !"\r"
+                                    !" "]
+  description.string = [[description string] stringByReplacingStringByString
+                                    !"\\"
+                                    !"\\\\"]
+  description.string = [[description string] stringByReplacingStringByString
+                                    !"\""
+                                    !"\\\""]
+}
+
+proc displayOil
+  ?@string string
+{
+  if [option goil_options.arxmlDisplayOil value] then
+    message string
+  end
+}
+
+proc arxmlGetMultiplicity
+  ?@arxmlElementValue element
+  ?@lstring objectName
+  !@lbool multiple
+{
+  if [element hasElement !"UPPER-MULTIPLICITY-INFINITE"] then
+    let @lstring smultiple = [element getTextFromElement
+                                           !"UPPER-MULTIPLICITY-INFINITE"]
+    if [[smultiple string] uppercaseString] == "TRUE"
+    || [smultiple string] == "1" then
+      multiple = .new {!true !smultiple.location}
+      displayOil(!"[]")
+    else
+      multiple = .new {!false !smultiple.location}
+    end
+  else
+    multiple = .new {!false !objectName.location}
+  end
+}
+
+proc arxmlPopSign
+  ?!@lstring value
+  !@bool sign
+{
+  # Get the sign if exists
+  if [value characterAtIndex !0] == '-' then
+    sign = true
+    value.string = [value subStringFromIndex !1]
+  elsif [value characterAtIndex !0] == '+' then
+    sign = false
+    value.string = [value subStringFromIndex !1]
+  else
+    sign = false
+  end
+}
+
+proc arxmlGetWithAuto
+  ?@arxmlElementValue parameter
+  !@bool withAuto
+{
+  withAuto = false
+  if [parameter hasElement !"WITH-AUTO"] then
+    let @lstring autoString = [parameter getTextFromElement !"WITH-AUTO"]
+    if [[autoString string] uppercaseString] == "TRUE"
+    || [autoString string] == "1" then
+      withAuto = true
+      displayOil(!" WITH_AUTO")
+    end
+  end
+}
+
+proc arxmlGetName
+  ?@arxmlElementValue parameter
+  !@lstring objectName
+{
+  # Get the name
+  objectName = [parameter getTextFromElement !"SHORT-NAME"]
+  objectName.string = [[objectName string] uppercaseString]
+}
+
+proc arxmlInsertObjectAttribute
+  ?!@implementationObjectMap objectAttributes
+  ?@lstring attributeName
+  ?@impType type
+{
+  if [objectAttributes hasKey ![attributeName string]] then
+    let @impType previousType
+    [objectAttributes get !attributeName ?previousType]
+
+    #    message "*** New definition "+[attributeName string]+"\n";
+    if [previousType multiple] then
+      # Case where we have to append two default multiple attributes
+      # Done only if at least one of the values is a multipleAttribute
+      let @object_t previousDefaultValue = [previousType getDefaultValue]
+      let @object_t defaultValue = [type getDefaultValue]
+      @bool oneIsMultiple = false
+      if previousDefaultValue is == @multipleAttribute then
+        oneIsMultiple = true
+      elsif defaultValue is == @multipleAttribute then
+        oneIsMultiple = true
+      end
+
+      if oneIsMultiple then
+        # We have to append the previous default value list to the current.
+        # message "Adding element to " + [[previousType name] string] + "\n"
+        @identifierList aList = .emptyList
+        @lstring desc = emptyLString()
+        @location location = .nowhere
+
+        # Previous list first
+        cast previousDefaultValue
+        case == @multipleAttribute multiAttribute :
+          aList = [multiAttribute items]
+          desc = [multiAttribute oil_desc]
+          location = [multiAttribute location]
+        else end
+
+        # Then append the second
+        cast defaultValue
+        case == @multipleAttribute multiAttribute :
+          aList += [multiAttribute items]
+          if [desc string] == "" then
+            desc = [multiAttribute oil_desc]
+          end
+          if location == .nowhere then
+            location = [multiAttribute location]
+          end
+        else end
+
+        # Create the new default value
+        let @object_t newDefault = @multipleAttribute.new{!desc !location !aList}
+
+        # Replace the previous type
+        [!?type setDefValue !newDefault]
+
+        [!?objectAttributes del !attributeName ?*]
+        [!?objectAttributes put !attributeName !type]
+      end
+    end
+
+    if checkNewTypeWithinPreviousType(!attributeName !previousType !type) then
+      #      message "*** OK "+[attributeName string]+"\n";
+      #      log type;
+      [!?objectAttributes del !attributeName ?*]
+      [!?objectAttributes put !attributeName !type]
+    end
+  else
+    [!?objectAttributes put !attributeName !type]
+  end
+}
+

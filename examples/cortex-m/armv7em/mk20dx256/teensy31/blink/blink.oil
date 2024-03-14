@@ -1,0 +1,97 @@
+/**
+ * @file blink.oil
+ *
+ * @section desc File description
+ *
+ * Simple blink example.
+ *
+ * One alarm and one task are used for this simple example.
+ * Alarm 'blink_blink' activates task 'blink' and make it a periodic task.
+ * The alarm is AUTOSTART so it runs when the OS is started. Period is
+ * set to 500 ticks (1 ms tick).
+ *
+ * @section copyright Copyright
+ *
+ * Trampoline RTOS
+ *
+ * Trampoline is copyright (c) CNRS, University of Nantes, Ecole Centrale de Nantes
+ * Trampoline is protected by the French intellectual property law.
+ *
+ * This software is distributed under the GNU Public Licence V2.
+ * Check the LICENSE file in the root directory of Trampoline
+ *
+ * @section infos File informations
+ *
+ * $Date$
+ * $Rev$
+ * $Author$
+ * $URL$
+ */
+OIL_VERSION = "2.5";
+
+IMPLEMENTATION trampoline {
+
+    /* This fix the default STACKSIZE of tasks */
+    TASK {
+        UINT32 STACKSIZE = 100 ;
+    } ;
+
+    /* This fix the default STACKSIZE of ISRs */
+    ISR {
+        UINT32 STACKSIZE = 100 ;
+    } ;
+};
+
+CPU blink {
+  OS config {
+    STATUS = EXTENDED;
+    PRETASKHOOK = FALSE;
+    POSTTASKHOOK = FALSE;
+    PANICHOOK = TRUE;
+    
+    BUILD = TRUE {
+      TRAMPOLINE_BASE_PATH = "../../../../../..";
+      APP_SRC = "blink.c";
+      APP_NAME = "blink_exe";
+      COMMONFLAGS = "-O0";
+      COMMONFLAGS = "-DARDUINO=10603 -DTEENSYDUINO=124";
+      LDFLAGS = "-Map=blink.map";
+
+      COMPILER = "arm-none-eabi-gcc";
+      CPPCOMPILER = "arm-none-eabi-g++";
+      ASSEMBLER = "arm-none-eabi-as";
+      LINKER = "arm-none-eabi-ld";
+      COPIER = "arm-none-eabi-objcopy";
+      SYSTEM = PYTHON;
+    };
+    SYSTEM_CALL = TRUE;
+    MEMMAP = TRUE {
+      COMPILER = gcc;
+      LINKER = gnu_ld { SCRIPT = "script.ld"; };
+      ASSEMBLER = gnu_as;
+      MEMORY_PROTECTION = FALSE;
+    };
+  };
+  
+  APPMODE std {};
+  
+  TASK blink {
+    PRIORITY = 1;
+    AUTOSTART = FALSE;
+    ACTIVATION = 1;
+    SCHEDULE = FULL;
+  };
+  
+  ALARM blink_blink {
+    COUNTER = SystemCounter;
+    ACTION = ACTIVATETASK {
+      TASK = blink;
+    };
+    AUTOSTART = TRUE {
+      APPMODE = std;
+      ALARMTIME = 500;
+      CYCLETIME = 500;
+    };
+  };
+};
+
