@@ -22,36 +22,71 @@
 //simple mydelay function
 void mydelay(unsigned int ms)
 {
-    unsigned int i;
-    for(i=0;i<ms;i++)
-    {
-    }
+	unsigned int i;
+	for(i=0;i<ms;i++)
+	{
+	}
 }
 FUNC(int, OS_APPL_CODE) main(void)
-{
+				{
 	initBoard();
 	StartOS(OSDEFAULTAPPMODE);
 	return 0;
-}
+				}
 //-------------------------------------------
-#define APP_Task_Task1_START_SEC_CODE
+#define APP_Task_task1_START_SEC_CODE
 #include "tpl_memmap.h"
-TASK(Task1)
+TASK(task1)
 {
+	for(int i =0 ; i<100 ; i++)
+	{
+		PB15_blue;
+		mydelay(10);
+	}
+	SetEvent(task2,Task2_event);
+	for(int i =0 ; i<100 ; i++)
+	{
+		PB15_blue;
+		mydelay(10);
+	}
 
-
-			TerminateTask();
-
+	TerminateTask();
 }
-#define APP_Task_Task1_STOP_SEC_CODE
+#define APP_Task_task1_STOP_SEC_CODE
 #include "tpl_memmap.h"
 //-------------------------------------------
+//-------------------------------------------
+#define APP_Task_task2_START_SEC_CODE
+#include "tpl_memmap.h"
+TASK(task2)
+{
+	EventMaskType receivedEvents;
 
+	while(1)
+	{
+		WaitEvent(Task2_event);
+		GetEvent(task2, &receivedEvents);
+        // Clear the event after handling
+         ClearEvent(Task2_event);
+		if (receivedEvents & Task2_event)
+		{
+			for(int i =0 ; i<100 ; i++)
+			{
+				PA15_red;
+				mydelay(10);
+			}
+		}
+	}
+
+}
+#define APP_Task_task2_STOP_SEC_CODE
+#include "tpl_memmap.h"
+//-------------------------------------------
 
 /*
  *  * This is necessary for ST libraries
  *   */
 FUNC(void, OS_CODE) assert_failed(uint8_t* file, uint32_t line)
-{
-}
+				{
+				}
 
