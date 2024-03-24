@@ -85,7 +85,7 @@ TASK(task1)
 
 
 
-	SetRelAlarm(PWM_high_Alarm,T_Low_ticks,0 );
+	SetRelAlarm(Task_High_alarm,T_Low_ticks,0 );
 
 	TerminateTask();
 
