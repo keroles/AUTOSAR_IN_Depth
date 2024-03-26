@@ -61,6 +61,7 @@ CPU timer {
 		AUTOSTART = TRUE {
 			APPMODE = std;
 		};
+	EVENT = OSEvent_10ms;
 	};
 	TASK RteTaskOIE {
 		PRIORITY = 2;
@@ -73,19 +74,23 @@ CPU timer {
 	};
 
 
-ALARM OSEvent10ms {
-		ACTION = ACTIVATETASK {
+ALARM OSAlarm10ms {
+		ACTION = SETEVENT {
 			TASK = RteTaskCyclicTask;
+			EVENT = OSEvent_10ms;
 		};
 		AUTOSTART = TRUE {
-			ALARMTIME = 30;
-			CYCLETIME = 30;
+			ALARMTIME = 8;
+			CYCLETIME = 8;
 			APPMODE = std;
 		};
 		COUNTER = SystemCounter;
 	};
 	
 	EVENT OSOIEvent {
+		MASK = AUTO;
+	};
+	EVENT OSEvent_10ms {
 		MASK = AUTO;
 	};
 };
